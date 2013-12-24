@@ -1,0 +1,11 @@
+Extracting Synchronous Grammar Rules From Word-Level Alignments in Linear Time
+Hao Zhang and Daniel Gildea and David Chiang
+Coling 2008
+
+Input file format:
+
+Two integers specifying the dimensions of alignment grid,
+followed by one line per word, each line containing the sequence
+of word positions in other language to which this word aligns.
+
+See example input file test.in, example output file test.out.gold.
