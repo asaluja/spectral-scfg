@@ -1,23 +1,23 @@
 #!/usr/bin/python -tt
 
-#####################
-#File: tree_to_rule.py
-#Date: September 30, 2013
-#Description: this script takes the output of the "RC"
-#code (an implementation of a linear-time shift-reduce based
-#algorithm to extract "minimal" synchronous grammar rules
-#from word alignments.  See the following paper for more details:
-#H. Zhang, D. Gildea, and D. Chiang: Extracting Synchronous Grammar Rules From Word-Level Alignments
-#in Linear Time (COLING 2008) and converts it to a list of the rules used. 
-#arg1: source-target sentence pairs, one line per pair, each pair separated by ' ||| '
-#arg2: alignments for each sentence pair
-#stdin: output of rc code
-#stdout: list of rules
-#option/flag 1: -d --> debug, prints out full output (if flag off, prints out Hiero output)
-#option/flag 2: -z --> print out to .gz file: need to provide directory where grammars are written, e.g.:
-#-z/usr0/home/avneesh/spectral-scfg/data
+'''
+File: tree_to_rule.py
+Date: September 30, 2013
+Description: this script takes the output of the "RC"
+code (an implementation of a linear-time shift-reduce based
+algorithm to extract "minimal" synchronous grammar rules
+from word alignments.  See the following paper for more details:
+H. Zhang, D. Gildea, and D. Chiang: Extracting Synchronous Grammar Rules From Word-Level Alignments
+in Linear Time (COLING 2008)) and converts it to a list of the rules used. 
+arg1: source-target sentence pairs, one line per pair, each pair separated by ' ||| '
+arg2: alignments for each sentence pair
+stdin: output of rc code
+stdout: list of rules
+option/flag 1: -d --> debug, prints out full output (if flag off, prints out Hiero output)
+option/flag 2: -z --> print out to .gz file: need to provide directory where grammars are written, e.g.:
+-z/usr0/home/avneesh/spectral-scfg/data
 #Author: Avneesh Saluja (avneesh@cs.cmu.edu)
-#####################
+'''
 
 import os, sys, commands, string, collections, re, getopt, gzip
 NTLabel = 0
@@ -108,16 +108,18 @@ def printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipO
             if original:
                 sentFile.write("[%s] ||| %s\n"%(nodeLabel, phrase_pair))
             else: #print Hiero grammar
-                if isLex:
-                    sentFile.write("[X] ||| %s\n"%(phrase_pair))
+                if isLex and srcNTCounter < 3:
+                    nodeStr = "[S]" if nodeLabel == 0 else "[X]"
+                    sentFile.write("[%s] ||| %s\n"%(nodeStr, phrase_pair))
                 elif srcNTCounter > 2:
                     sys.stderr.write("Sentence %d:Rule '[X] ||| %s' has more than 2 NTs\n"%(count, phrase_pair))
     else: #printing to stdout
         if original:
             print "[%s] ||| %s"%(nodeLabel, phrase_pair)
         else:
-            if isLex:
-                print "[X] ||| %s"%(phrase_pair)
+            if isLex and srcNTCounter < 3:
+                nodeStr = "S" if nodeLabel == 0 else "X"
+                print "[%s] ||| %s"%(nodeStr, phrase_pair)
             elif srcNTCounter > 2:
                 sys.stderr.write("Sentence %d:Rule '[X] ||| %s' has more than 2 NTs\n"%(count, phrase_pair))
 

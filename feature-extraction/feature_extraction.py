@@ -1,20 +1,20 @@
 #!/usr/bin/python -tt
 
-##########################
-#File: main.py
-#Description: main file for feature extraction
-#arg1: directory location of minimal grammar files
-#the files should be generated from the "tree_to_rule.py" script with the -d and -z flags
-#arg2: file location of feature vectors for the rules
-#stdout: rules (in the hiero format) decorated with pointers to the inside and outside feature vectors
-#Date: October 16, 2013
-#Update: November 4, 2013: added options to script, and new argument
-#arg3: location of featureIDs and feature names to be written out
-#In addition, we have added options corresponding to real-valued and arity features
-#Usage: python main.py -a -r/usr0/home/avneesh/grammar-loc /usr0/home/avneesh/mingrammar-loc featVecOut featNameOut
-#Updated Usage: we do not write out feature vectors anymore, only feature names
-#python main.py -a -r/usr0/home/avneesh/grammar-loc /usr0/home/avneesh/mingrammar-loc featNameOut rank paramOutFile
-##########################
+'''
+File: feature_extraction.py
+Author: Avneesh Saluja (avneesh@cs.cmu.edu)
+Date: October 16, 2013
+Description: main file for feature extraction
+arg1: directory location of minimal grammar files
+the files should be generated from the "tree_to_rule.py" script with the -d and -z flags
+arg2: file location of feature vectors for the rules
+stdout: rules (in the hiero format) decorated with pointers to the inside and outside feature vectors
+Update: November 4, 2013: added options to script, and changed feature vector outputs in arg2 to featureIDs
+arg2: location of featureIDs and feature names to be written out
+In addition, we have added options corresponding to real-valued and arity features
+By default, rule indicator features are always used. 
+Usage: python feature_extraction.py -a -r/usr0/home/avneesh/feat.grammar-loc /usr0/home/avneesh/min.grammar-loc featNameOut rank paramOutFile
+'''
 
 import sys, commands, string, gzip, os, os.path, re, getopt, cPickle
 import numpy as np
@@ -61,7 +61,7 @@ def main():
     sys.stderr.write("Feature extraction complete\n")
     sys.stdout.flush()
     kappa = 5.0
-    rank = int(args[3])
+    rank = int(args[2])
     in_fm = convertToSpMat(inFeatures, len(inFeatIDs), kappa) #convert to SpMat also does the feature scaling
     out_fm = convertToSpMat(outFeatures, len(outFeatIDs), kappa)            
     Y,Z = SVDandProjection(in_fm, out_fm, rank, True) #compute avg outer product, call Matlab to do SVD, extract Y and Z matrices
@@ -69,7 +69,7 @@ def main():
     paramDict = computeCorrelations(Y,Z) #compute tensors, matrices, and vectors
     paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
     sys.stderr.write("Parameter estimation complete\n")
-    cPickle.dump(paramDict, open(args[2], "wb")) #write out in cPickle format for I/O algorithm
+    cPickle.dump(paramDict, open(args[3], "wb")) #write out in cPickle format for I/O algorithm
     featNameHandle = open(featname_out_loc, 'w')
     for feature in inFeatIDs: #write out feature names and IDs
         print >> featNameHandle, "INSIDE %s:%d"%(feature, inFeatIDs[feature])
@@ -140,8 +140,13 @@ def computeCorrelations(Y, Z):
                 outerProd += Z[out_idx,:]
         else:
             sys.stderr.write("Rule has more than 2 inside trees or more than 1 outside tree!\n%s\n"%rule)
-        outerProd = np.multiply(outerProd, scale) #scale by MLE count #is outerprod a matrix or array??
-        paramDict[rule] = outerProd                       
+        outerProd = np.multiply(outerProd, scale) #scale by MLE count
+        elements = rule.split(' ||| ')
+        src_key = ' ||| '.join(elements[:-1])
+        tgt_key = elements[-1]
+        srcDict = paramDict[src_key] if src_key in paramDict else {}
+        srcDict[tgt_key] = outerProd
+        paramDict[src_key] = srcDict
     return paramDict
         
 def tensorProduct(vec1, vec2, vec3):
@@ -178,7 +183,6 @@ def update_features(sent_tree, inFeat, outFeat, arityF, realF, hiero_loc=""):
     global exampleID, exampleIDs
     curID = 0
     if len(sent_tree.children) < 3: #filter rules with # of NTs > 2
-        #check_maxLex(sent_tree)
         insFeatDict = {} #keys are feature IDs, vals are binary 1/0
         outFeatDict = {}
         extractRuleFeatures(sent_tree, insFeatDict, outFeatDict)
@@ -198,7 +202,6 @@ def update_features(sent_tree, inFeat, outFeat, arityF, realF, hiero_loc=""):
     if len(sent_tree.children) < 3:
         exIDs.append("Out:%d"%curID)
         key = sent_tree.rule #key is now the entire rule; to distinguish between S --> X1 X2 and X --> X1 X2
-        #key = (sent_tree.src, sent_tree.tgt) #key is src-tgt phrase pair OLD!
         exampleList = exampleIDs[key] if key in exampleIDs else []
         exampleList.append(' '.join(exIDs))
         exampleIDs[key] = exampleList #link src/tgt phrase pair with the inside and outside row IDs

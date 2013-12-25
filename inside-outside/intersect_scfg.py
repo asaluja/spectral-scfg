@@ -19,14 +19,15 @@ import sys, commands, string, cPickle, re, hg_io
 from trie import trie, ActiveItem, HyperGraph
 
 params_fh = open(sys.argv[1], 'rb')
-paramDict = cPickle.load(params_fh)
+paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
+rank = int(sys.argv[2])
 passive = {}
 active = {}
 nodemap = {}
 
 def main():
     grammar_rules = [rule for rule in paramDict.keys() if rule != "Pi"] #Pi contains the start of sentence params
-    grammarTrie = trie(grammar_rules)
+    grammarTrie = trie(grammar_rules) 
     for line in sys.stdin:
         print "bottom-up parse for input sentence: "
         print line.strip()
@@ -38,7 +39,8 @@ def main():
         nodemap.clear()
         if len(goal_nodes) > 0: #i.e., if we have created at least 1 node in the HG corresponding to goal
             print "parsing success; length of sentence: %d"%(len(words))
-            marginals = hg_io.insideOutside(hg, paramDict)
+            #print "(Nodes/Edges): %d / %d"%(len(hg.nodes_), len(hg.edges_))
+            marginals = hg_io.insideOutside(hg, paramDict, rank)
             print "marginals computed over hypergraph"
             convertHGToRules(hg, marginals)
         else:

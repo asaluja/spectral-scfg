@@ -1,17 +1,17 @@
 #!/usr/bin/python -tt
 
-#####################
-#File: decorate_minrules_with_features.py
-#Date: October 13, 2013
-#Author: Avneesh Saluja (avneesh@cs.cmu.edu)
-#Description: this script takes as arguments the following:
-#arg 1: location of files with rules generated through the post-processed minimal
-#rule output (of of H. Zhang, D. Gildea, and D. Chiang, NAACL 2008)
-#arg 2: location of files with full set of rules extracted from suffix array structure
-#(these rules are already featurized)
-#arg 3: location of output files 
-#Usage: python decorate_minrules_with_features.py minRules-dir fullRules-dir output-dir
-#####################
+'''
+File: decorate_minrules_with_features.py
+Date: October 13, 2013
+Author: Avneesh Saluja (avneesh@cs.cmu.edu)
+Description: this script takes as arguments the following:
+arg 1: location of files with rules generated through the post-processed minimal
+rule output (of of H. Zhang, D. Gildea, and D. Chiang, NAACL 2008)
+arg 2: location of files with full set of rules extracted from suffix array structure
+(these rules are already featurized)
+arg 3: location of output files 
+Usage: python decorate_minrules_with_features.py minRules-dir fullRules-dir output-dir
+'''
 
 import sys, commands, string, gzip, os
 

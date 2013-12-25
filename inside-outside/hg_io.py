@@ -20,37 +20,36 @@ from trie import HyperGraph
 import numpy as np
 
 def checkArity(rule):
-    return len(re.findall(r'\[([^]]+)\]', rule.split(' ||| ')[1]))
+    return len(re.findall(r'\[([^]]+)\]', rule))
 
 def computeInside(hg, paramDict, rank):
-    PDKeys = [pp for pp in paramDict if pp != "Pi"] #filtering sentence start parameters
     alphaDict = {}
     for node in hg.nodes_: #nodes are added in topological order, so hg.nodes_ is guaranteed to be sorted
         aggregate = np.zeros((rank))
         for inEdgeID in node.in_edges_: #for each incoming hyperedge (i.e., rule that fits the span)
-            src_rule = hg.edges_[inEdgeID].rule
+            src_rule = hg.edges_[inEdgeID].rule #src RHS string
             tail = hg.edges_[inEdgeID].tailNodes
-            matching_rules = [rule for rule in PDKeys if rule.split(' ||| ')[1] == src_rule]
-            for key in matching_rules:
-                arity = checkArity(key)
-                assert len(tail) == arity
-                if arity == 0: #pre-terminal
-                    aggregate += paramDict[key]
-                elif arity == 1:
-                    aggregate += paramDict[key].dot(alphaDict[tail[0]])
-                elif arity == 2:
-                    x1_alpha = alphaDict[tail[0]]
-                    x2_alpha = alphaDict[tail[1]]
-                    result = np.tensordot(paramDict[key], x1_alpha, axes=([1], [0]))
-                    result = np.tensordot(result, x2_alpha, axes=([1], [0]))
-                    aggregate += result
-                else:
+            arity = checkArity(src_rule)
+            assert len(tail) == arity
+            key = ' ||| '.join([node.cat, src_rule])
+            srcDict = paramDict[key] #dict of params with same src rule, each value is a tensor/matrix/vector
+            for target_rule in srcDict: #key is target rule
+                 if arity == 0: #pre-terminal
+                     aggregate += srcDict[target_rule]
+                 elif arity == 1:
+                     aggregate += srcDict[target_rule].dot(alphaDict[tail[0]])
+                 elif arity == 2:
+                     x1_alpha = alphaDict[tail[0]]
+                     x2_alpha = alphaDict[tail[1]]
+                     result = np.tensordot(srcDict[target_rule], x1_alpha, axes=([1], [0]))
+                     result = np.tensordot(result, x2_alpha, axes=([1], [0]))
+                     aggregate += result
+                 else:
                     sys.stderr.write("Arity > 2! Cannot compute alpha terms\n")
         alphaDict[node.id] = aggregate
     return alphaDict
 
 def computeOutside(hg, paramDict, rank, alphaDict):
-    PDKeys = [pp for pp in paramDict if pp != "Pi"] #filtering sentence start parameters
     betaDict = {}
     for key in alphaDict: #initialize the beta terms to 0
         betaDict[key] = np.zeros((rank))
@@ -58,29 +57,31 @@ def computeOutside(hg, paramDict, rank, alphaDict):
     for q_node in reversed(hg.nodes_): #iterate through nodes in reverse topological order
         x_beta = betaDict[q_node.id]
         for inEdgeID in q_node.in_edges_: #for each incoming hyperedge
-            src_rule = hg.edges_[inEdgeID].rule
+            src_rule = hg.edges_[inEdgeID].rule #src RHS string
             tail = hg.edges_[inEdgeID].tailNodes
-            matching_rules = [rule for rule in PDKeys if rule.split(' ||| ')[1] == src_rule]
-            for key in matching_rules: #for each rule where src RHS == hyper edge src RHS
-                arity = checkArity(key)
-                assert len(tail) == arity #skip if arity == 0 (pre-term)
+            arity = checkArity(src_rule)
+            assert len(tail) == arity
+            key = ' ||| '.join([q_node.cat, src_rule])
+            srcDict = paramDict[key]
+            for target_rule in srcDict: #for each rule where src RHS == hyper edge src RHS
                 if arity == 1: #then just add the result to tailnode
-                    betaDict[tail[0]] += x_beta.dot(paramDict[key])
+                    betaDict[tail[0]] += x_beta.dot(srcDict[target_rule])
                 elif arity == 2:
-                    result = np.tensordot(paramDict[key], x_beta, axes=([0], [0]))                
+                    result = np.tensordot(srcDict[target_rule], x_beta, axes=([0], [0]))                
                     x_alpha_right = alphaDict[tail[1]]
                     betaDict[tail[0]] += np.tensordot(result, x_alpha_right, axes=([1], [0]))
                     x_alpha_left = alphaDict[tail[0]]
                     betaDict[tail[1]] += np.tensordot(result, x_alpha_left, axes=([0], [0]))                
     return betaDict
                 
-def insideOutside(hg, paramDict):
-    rank = len(paramDict[paramDict.keys()[0]])
-    alpha = computeInside(hg, paramDict, rank)
+def insideOutside(hg, paramDict, rank):
+    alpha = computeInside(hg, paramDict, rank)    #paramDict keys are 'LHS ||| src_RHS' format
     beta = computeOutside(hg, paramDict, rank, alpha)
     marginals = {}
     for nodeID in alpha:
         marginals[nodeID] = np.dot(alpha[nodeID], beta[nodeID])
+        if marginals[nodeID] > 1 or marginals[nodeID] < 0:
+            sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g\n"%(hg.nodes_[nodeID].i, hg.nodes_[nodeID].j, marginals[nodeID]))
     return marginals
     
 

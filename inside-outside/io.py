@@ -176,6 +176,10 @@ def computeMarginals(words):
     for i in range(0, len(words)):
         for j in range(0, len(words)):
             marginals[i,j] = np.dot(alpha[i,j,:], beta[i,j,:])
+            print "cell item [%d,%d] alpha, beta, and marginal"%(i,j)
+            print alpha[i,j,:]
+            print beta[i,j,:]
+            print marginals[i,j]
             if marginals[i,j] > 1 or marginals[i,j] < 0:
                 sys.stderr.write("Error! marginal of span [%d,%d] outside of range: %s\n"%(i,j,str(marginals[i,j])))
     return marginals
@@ -188,10 +192,10 @@ def main():
         words = line.strip().split()
         N = len(words)
         marginals = computeMarginals(words)
-        for i in range(0,N):
-            for j in range(0,N):
-                print marginals[i,j],
-            print
+        #for i in range(0,N):
+        #    for j in range(0,N):
+        #        print marginals[i,j],
+        #    print
         sys.stdout.flush()
         sentence_marginals.append(marginals)
     #write out marginals to file here

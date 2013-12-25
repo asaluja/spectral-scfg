@@ -123,8 +123,6 @@ class HGEdge:
         self.rule = rule
         self.tailNodes = tail[:] #list of node IDs of the various tail nodes
         self.id = edgeID
-        #self.i = -1 #left idx (in src sentence) of head node span
-        #self.j = -1 #right idx
         self.headNode = -1 #ID of head node
 
 class HGNode:
