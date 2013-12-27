@@ -80,8 +80,11 @@ def insideOutside(hg, paramDict, rank):
     marginals = {}
     for nodeID in alpha:
         marginals[nodeID] = np.dot(alpha[nodeID], beta[nodeID])
-        if marginals[nodeID] > 1 or marginals[nodeID] < 0:
-            sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g\n"%(hg.nodes_[nodeID].i, hg.nodes_[nodeID].j, marginals[nodeID]))
+        if marginals[nodeID] < 0:
+            flipped = -marginals[nodeID]
+            marginals[nodeID] = flipped
+        #if marginals[nodeID] > 1 or marginals[nodeID] < 0:
+        #    sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g\n"%(hg.nodes_[nodeID].i, hg.nodes_[nodeID].j, marginals[nodeID]))
     return marginals
     
 

@@ -15,12 +15,20 @@ arg1: dictionary of parameters (output of feature extraction step)
 stdin: tokenized sentences
 '''
 
-import sys, commands, string, cPickle, re, hg_io
+import sys, commands, string, cPickle, re, hg_io, getopt
 from trie import trie, ActiveItem, HyperGraph
 
-params_fh = open(sys.argv[1], 'rb')
+(opts, args) = getopt.getopt(sys.argv[1:], 'd:')
+debug=False
+debugOut=""
+for opt in opts:
+    if opt[0] == '-d':
+        debug=True
+        debugOut=opt[1]
+
+params_fh = open(args[0], 'rb')
 paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
-rank = int(sys.argv[2])
+rank = int(args[1])
 passive = {}
 active = {}
 nodemap = {}
@@ -28,6 +36,7 @@ nodemap = {}
 def main():
     grammar_rules = [rule for rule in paramDict.keys() if rule != "Pi"] #Pi contains the start of sentence params
     grammarTrie = trie(grammar_rules) 
+    count = 0
     for line in sys.stdin:
         print "bottom-up parse for input sentence: "
         print line.strip()
@@ -39,31 +48,49 @@ def main():
         nodemap.clear()
         if len(goal_nodes) > 0: #i.e., if we have created at least 1 node in the HG corresponding to goal
             print "parsing success; length of sentence: %d"%(len(words))
-            #print "(Nodes/Edges): %d / %d"%(len(hg.nodes_), len(hg.edges_))
-            marginals = hg_io.insideOutside(hg, paramDict, rank)
-            print "marginals computed over hypergraph"
-            convertHGToRules(hg, marginals)
+            if debug:
+                printHGDebug(hg, count)
+            else:
+                marginals = hg_io.insideOutside(hg, paramDict, rank)
+                print "marginals computed over hypergraph"
+                convertHGToRules(hg, marginals)
         else:
             print "parsing fail; length of sentence: %d"%(len(words))
+        count += 1
         sys.stdout.flush()
- 
+
+def printHGDebug(hg, line_num):
+    print "(Nodes/Edges): %d / %d"%(len(hg.nodes_), len(hg.edges_))
+    fh = open("%s/%d"%(debugOut, line_num), 'w')
+    for node in hg.nodes_: 
+        print >> fh, "Node ID: %d"%(node.id)
+        LHS = node.cat[:-1] + ",%d-%d]"%(node.i, node.j)
+        for inEdgeID in node.in_edges_:
+            rule_decorated = decorateRule(hg, inEdgeID)
+            print >> fh, "%s ||| %s"%(LHS, ' '.join(rule_decorated))
+    fh.close()
+
 def convertHGToRules(hg, marginals):
-    expr = re.compile(r'\[([^]]*)\]')
-    for node in hg.nodes_:        
+    for node in hg.nodes_: 
         LHS = node.cat[:-1] + ",%d-%d]"%(node.i, node.j)
         marginal = marginals[node.id] #marginals defined over span
         for inEdgeID in node.in_edges_:
-            rule = hg.edges_[inEdgeID].rule
-            tail = hg.edges_[inEdgeID].tailNodes[:]
-            rule_decorated = []
-            for item in rule.split():
-                if expr.match(item): #NT, we need to decorate with its span
-                    child = hg.nodes_[tail.pop(0)]
-                    NT = child.cat[:-1] + ",%d-%d]"%(child.i,child.j)
-                    rule_decorated.append(NT)
-                else:
-                    rule_decorated.append(item)
+            rule_decorated = decorateRule(hg, inEdgeID)
             print "%s ||| %s ||| %.5g"%(LHS, ' '.join(rule_decorated), marginal)
+
+def decorateRule(hg, inEdgeID):
+    expr = re.compile(r'\[([^]]*)\]')
+    rule = hg.edges_[inEdgeID].rule
+    tail = hg.edges_[inEdgeID].tailNodes[:]
+    rule_decorated = []
+    for item in rule.split():
+        if expr.match(item): #NT, we need to decorate with its span
+            child = hg.nodes_[tail.pop(0)]
+            NT = child.cat[:-1] + ",%d-%d]"%(child.i,child.j)
+            rule_decorated.append(NT)
+        else:
+            rule_decorated.append(item)
+    return rule_decorated
 
 def parse(words, grammarTrie, goal_idx):
     N = len(words)
