@@ -17,7 +17,7 @@ class trieNode:
         if item not in self.edges_:
             self.edges_[item] = trieNode()
 
-    def addRule(self, rule):
+    def addRule(self, rule): #rule is an (LHs, src RHS) tuple
         self.rb_.append(rule)
         self.rb_ = list(set(self.rb_))
 
@@ -44,6 +44,7 @@ class trie:
     '''
     def __init__(self, rules): #constructor for trie
         self.root = trieNode()
+        #should add OOV rule here
         for rule in rules: #rules is a list of rules
             elements = rule.split(' ||| ')
             LHS = elements[0]
@@ -55,6 +56,9 @@ class trie:
                 nextNode = curNode.Extend(item)
                 curNode = nextNode
             curNode.addRule((LHS,RHS_src)) #once done, add rule to rule bin of current node   
+        self.root.addEdge("<unk>") #adding OOV token
+        OOVNode = self.root.Extend("<unk>")
+        OOVNode.addRule(("[X]","<unk>"))
     
     def formatRule(self, rule): #rule is the source phrase broken down into a list
         exp = re.compile(r'\[([^]]*)\]')
@@ -89,11 +93,11 @@ class ActiveItem:
     cdec's bottom_up_parser.cc.  
     '''
     def __init__(self, node, tailNodes=[]):
-        self.gptr = node
+        self.srcTrie = node
         self.tailNodeVec = tailNodes
 
     def extendNonTerminal(self, node_idx):        
-        ni = self.gptr.Extend("[X]")
+        ni = self.srcTrie.Extend("[X]")
         if ni is not None:
             tailNodes = self.tailNodeVec[:]
             tailNodes.append(node_idx)
@@ -102,12 +106,17 @@ class ActiveItem:
             return None
     
     def extendTerminal(self, word):
-        ni = self.gptr.Extend(word)        
+        ni = self.srcTrie.Extend(word)        
         if ni is not None:
             tail = self.tailNodeVec[:]
             return ActiveItem(ni, tail)
         else:
             return None
+
+    def extendOOV(self):
+        ni = self.srcTrie.Extend("<unk>")
+        tail = self.tailNodeVec[:]
+        return ActiveItem(ni, tail)
 
 class HGEdge:
     '''

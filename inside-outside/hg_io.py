@@ -33,18 +33,18 @@ def computeInside(hg, paramDict, rank):
             assert len(tail) == arity
             key = ' ||| '.join([node.cat, src_rule])
             srcDict = paramDict[key] #dict of params with same src rule, each value is a tensor/matrix/vector
-            for target_rule in srcDict: #key is target rule
-                 if arity == 0: #pre-terminal
-                     aggregate += srcDict[target_rule]
-                 elif arity == 1:
-                     aggregate += srcDict[target_rule].dot(alphaDict[tail[0]])
-                 elif arity == 2:
-                     x1_alpha = alphaDict[tail[0]]
-                     x2_alpha = alphaDict[tail[1]]
-                     result = np.tensordot(srcDict[target_rule], x1_alpha, axes=([1], [0]))
-                     result = np.tensordot(result, x2_alpha, axes=([1], [0]))
-                     aggregate += result
-                 else:
+            for target_rule in srcDict: #key is target rule                
+                if arity == 0: #pre-terminal
+                    aggregate += srcDict[target_rule]
+                elif arity == 1:
+                    aggregate += srcDict[target_rule].dot(alphaDict[tail[0]])
+                elif arity == 2: #this part of the code seems to take some time
+                    x1_alpha = alphaDict[tail[0]]
+                    x2_alpha = alphaDict[tail[1]]
+                    result = np.tensordot(srcDict[target_rule], x2_alpha, axes=([2], [0]))
+                    result = np.tensordot(result, x1_alpha, axes=([1], [0]))
+                    aggregate += result
+                else:
                     sys.stderr.write("Arity > 2! Cannot compute alpha terms\n")
         alphaDict[node.id] = aggregate
     return alphaDict
@@ -67,7 +67,7 @@ def computeOutside(hg, paramDict, rank, alphaDict):
                 if arity == 1: #then just add the result to tailnode
                     betaDict[tail[0]] += x_beta.dot(srcDict[target_rule])
                 elif arity == 2:
-                    result = np.tensordot(srcDict[target_rule], x_beta, axes=([0], [0]))                
+                    result = np.tensordot(srcDict[target_rule], x_beta, axes=([0], [0])) #because we are defining axis, order of param and x_beta doesn't matter
                     x_alpha_right = alphaDict[tail[1]]
                     betaDict[tail[0]] += np.tensordot(result, x_alpha_right, axes=([1], [0]))
                     x_alpha_left = alphaDict[tail[0]]

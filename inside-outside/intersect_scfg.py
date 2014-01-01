@@ -1,4 +1,5 @@
 #!/usr/bin/python -tt
+
 '''
 File: intersect_scfg.py
 Date: December 13, 2013
@@ -13,22 +14,27 @@ Downstream, io.py must read in and process the per-sentence grammar
 into a chart, after which the alpha and beta terms can be computed easily. 
 arg1: dictionary of parameters (output of feature extraction step)
 stdin: tokenized sentences
+Update: incorporated simple multicore setup.  Basically, we divide the input
+test corpus into partitions or chunks, and each process handles one partition. 
+Usage: python intersect_scfg.py (-d) SpectralParams SentencesToDecode NumPartitions Partition Rank OutDir
 '''
 
-import sys, commands, string, cPickle, re, hg_io, getopt
+import sys, commands, string, cPickle, re, getopt, math, hg_io
 from trie import trie, ActiveItem, HyperGraph
 
-(opts, args) = getopt.getopt(sys.argv[1:], 'd:')
+(opts, args) = getopt.getopt(sys.argv[1:], 'd')
 debug=False
-debugOut=""
 for opt in opts:
     if opt[0] == '-d':
         debug=True
-        debugOut=opt[1]
 
 params_fh = open(args[0], 'rb')
 paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
-rank = int(args[1])
+inputFile = open(args[1], 'r').readlines()
+numPartitions = int(args[2])
+partition = int(args[3])
+rank = int(args[4])
+outDir = args[5]
 passive = {}
 active = {}
 nodemap = {}
@@ -36,8 +42,12 @@ nodemap = {}
 def main():
     grammar_rules = [rule for rule in paramDict.keys() if rule != "Pi"] #Pi contains the start of sentence params
     grammarTrie = trie(grammar_rules) 
-    count = 0
-    for line in sys.stdin:
+    numSentences = len(inputFile)
+    sentencesPerChunk = numSentences/numPartitions #int/int means sentencesPerChunk will be truncated
+    start = partition*sentencesPerChunk
+    end = (partition+1)*sentencesPerChunk if partition < numPartitions - 1 else numSentences
+    for lineNum in range(start,end):
+        line = inputFile[lineNum]
         print "bottom-up parse for input sentence: "
         print line.strip()
         words = line.strip().split()
@@ -49,34 +59,39 @@ def main():
         if len(goal_nodes) > 0: #i.e., if we have created at least 1 node in the HG corresponding to goal
             print "parsing success; length of sentence: %d"%(len(words))
             if debug:
-                printHGDebug(hg, count)
+                printHGDebug(hg, lineNum)
             else:
                 marginals = hg_io.insideOutside(hg, paramDict, rank)
                 print "marginals computed over hypergraph"
-                convertHGToRules(hg, marginals)
+                convertHGToRules(hg, marginals, lineNum, words)
         else:
             print "parsing fail; length of sentence: %d"%(len(words))
-        count += 1
         sys.stdout.flush()
 
 def printHGDebug(hg, line_num):
     print "(Nodes/Edges): %d / %d"%(len(hg.nodes_), len(hg.edges_))
-    fh = open("%s/%d"%(debugOut, line_num), 'w')
+    fh = open("%s/%d"%(outDir, line_num), 'w')
     for node in hg.nodes_: 
         print >> fh, "Node ID: %d"%(node.id)
         LHS = node.cat[:-1] + ",%d-%d]"%(node.i, node.j)
         for inEdgeID in node.in_edges_:
             rule_decorated = decorateRule(hg, inEdgeID)
-            print >> fh, "%s ||| %s"%(LHS, ' '.join(rule_decorated))
+            print >> fh, "%s ||| %s"%(LHS, rule_decorated)
     fh.close()
 
-def convertHGToRules(hg, marginals):
+def convertHGToRules(hg, marginals, line_num, words):
+    fh = open("%s/%d"%(outDir, line_num), 'w')
     for node in hg.nodes_: 
         LHS = node.cat[:-1] + ",%d-%d]"%(node.i, node.j)
         marginal = marginals[node.id] #marginals defined over span
-        for inEdgeID in node.in_edges_:
-            rule_decorated = decorateRule(hg, inEdgeID)
-            print "%s ||| %s ||| %.5g"%(LHS, ' '.join(rule_decorated), marginal)
+        if marginal > 0:            
+            for inEdgeID in node.in_edges_:
+                key = ' ||| '.join([node.cat, hg.edges_[inEdgeID].rule])
+                src_decorated = decorateRule(hg, inEdgeID)
+                for target_rule in paramDict[key]: 
+                    src_tgt_decorated = "%s ||| %s"%(words[node.i], words[node.i]) if target_rule == "<unk>" else "%s ||| %s"%(src_decorated, target_rule)
+                    print >> fh, "%s ||| %s ||| %.5g"%(LHS, src_tgt_decorated, math.log(marginal))
+    fh.close()
 
 def decorateRule(hg, inEdgeID):
     expr = re.compile(r'\[([^]]*)\]')
@@ -90,7 +105,7 @@ def decorateRule(hg, inEdgeID):
             rule_decorated.append(NT)
         else:
             rule_decorated.append(item)
-    return rule_decorated
+    return ' '.join(rule_decorated)
 
 def parse(words, grammarTrie, goal_idx):
     N = len(words)
@@ -102,7 +117,7 @@ def parse(words, grammarTrie, goal_idx):
             advanceDotsForAllItemsInCell(i, j, words)
             cell = active[(i,j)][:] if (i,j) in active else [] #list of active items
             for activeItem in cell:
-                rules = activeItem.gptr.getRules()
+                rules = activeItem.srcTrie.getRules()
                 #if we are at (0,N), then we should only apply rules that have 'S' as LHS; otherwise, we should only apply rules that have 'X' as LHS
                 rules = [rule for rule in rules if rule[0] == '[S]'] if (i == 0) and (j == N) else [rule for rule in rules if rule[0] == '[X]'] 
                 if len(rules) > 0:
@@ -118,13 +133,24 @@ def parse(words, grammarTrie, goal_idx):
     return hg
 
 '''
-places a pointer to the source rules trie root along the diagonal of the active chart
+Function called before the sentence is parsed;
+places a pointer to the source rules trie root
+along the diagonal of the active chart. 
 '''
 def seedActiveChart(grammarTrie, N):
     global active
     for i in range(0, N): #note: for now, we don't test hasRuleForSpan        
         active.setdefault((i,i), []).append(ActiveItem(grammarTrie.getRoot())) #add the root of the trie
 
+'''
+Function that "advances the dot" (in a dotted rule)
+on position to the right for all active items in the cell
+defined by (start,end).  We first perform online binarization
+by looping through all split points in the span and then see if
+advancing the dot happened to cover a non-terminal (this is handled
+in extendActiveItems).  We then check and see if advancing the dot 
+happened to cover a new rule with the additional terminal.  
+'''
 def advanceDotsForAllItemsInCell(start, end, words):
     for k in range(start+1, end):
         extendActiveItems(start, k, end)        
@@ -134,6 +160,9 @@ def advanceDotsForAllItemsInCell(start, end, words):
         ai = actItem.extendTerminal(word)
         if ai is not None:
             active.setdefault((start,end), []).append(ai)
+        elif end-start == 1: #ai is None but we are covering an OOV word
+            print "Extended OOV for span %d,%d"%(start,end)
+            active.setdefault((start,end), []).append(actItem.extendOOV())
 
 def extendActiveItems(start, split, end):
     global active

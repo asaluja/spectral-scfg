@@ -14,36 +14,37 @@ arg2: location of featureIDs and feature names to be written out
 In addition, we have added options corresponding to real-valued and arity features
 By default, rule indicator features are always used. 
 Usage: python feature_extraction.py -a -r/usr0/home/avneesh/feat.grammar-loc /usr0/home/avneesh/min.grammar-loc featNameOut rank paramOutFile
+Update: December 31, 2013: added lexical and lexical class features.  Note that the word classes should 
+be given in two separate files, one for each language, and that these paths should be separated by a ':'
+Usage: python feature_extraction.py -a -c/path/to/wordClasses -r/path/to/suffixArrayGrammar /path/to/minimalGrammar /path/to/featureNamesOutput rank /path/to/parametersOutput
 '''
 
 import sys, commands, string, gzip, os, os.path, re, getopt, cPickle
 import numpy as np
 import scipy.sparse as sp
 import scipy.linalg as la
-import scipy.io as io
 from tree import tree
 
-exampleIDs = {}
+exampleIDs = {} #key: rule; values: list of strings, each string being a 1/2/3-tuple: InIdxLeft (if there), InIdxRight (if there), OutIdx
 exampleID = 0
-inFeatIDs = {}
+ruleToIdxMap = {} #key: rule; values: dict with two keys only: one key is the list of row indices corresponding to current rule that is key; the other is a list of row indices corresponding to parent
+inFeatIDs = {} #key: feature (string), value: feature ID
 inFeatID = 0
-outFeatIDs = {}
+outFeatIDs = {} #same as inFeatIDs
 outFeatID = 0
 def main():
-    arityF = False
-    realF = False
-    hiero_loc = "" #for real-valued features
-    lexF = False
-    #any other features, put a boolean here
-    (opts, args) = getopt.getopt(sys.argv[1:], 'ar:')
+    featBinDict = {}
+    (opts, args) = getopt.getopt(sys.argv[1:], 'ac:lr:')
     for opt in opts:
         if opt[0] == '-a':
-            arityF = True
+            featBinDict["arityF"] = 1
         elif opt[0] == '-r':
-            realF = True
-            hiero_loc = opt[1]
+            featBinDict["realF"] = opt[1]
         elif opt[0] == '-l':
-            lexF = True
+            featBinDict["lexF"] = 1
+        elif opt[0] == '-c':
+            filenames = opt[1].split(':')
+            featBinDict["classF"] = readInWordClasses(filenames)
     minRule_grammars_loc = args[0]
     numSentences = len(os.listdir(minRule_grammars_loc))
     featname_out_loc = args[1]
@@ -53,17 +54,13 @@ def main():
     for line_num in range(0, numSentences): #loop through all sentence pairs
         minrule_fh = gzip.open(minRule_grammars_loc + "grammar.%d.gz"%(line_num))
         sync_tree = tree(0, None, None, minrule_fh) #use tree class to generate the tree using the minimal grammar for this sentence                        
-        if realF: #if also extracting real-valued features, use the regular hiero grammar which has these features (from the suffix array)
-            hiero_grammar_loc = hiero_loc + "/grammar.%d.gz"%(line_num) 
-            root_rules.append(update_features(sync_tree, inFeatures, outFeatures, arityF, realF, hiero_grammar_loc))
-        else:
-            root_rules.append(update_features(sync_tree, inFeatures, outFeatures, arityF, realF))
+        root_rules.append(update_features(sync_tree, inFeatures, outFeatures, featBinDict))
     sys.stderr.write("Feature extraction complete\n")
-    sys.stdout.flush()
     kappa = 5.0
-    rank = int(args[2])
+    rank = int(args[2])    
+    computeOOVProbMass(inFeatures)
     in_fm = convertToSpMat(inFeatures, len(inFeatIDs), kappa) #convert to SpMat also does the feature scaling
-    out_fm = convertToSpMat(outFeatures, len(outFeatIDs), kappa)            
+    out_fm = convertToSpMat(outFeatures, len(outFeatIDs), kappa)
     Y,Z = SVDandProjection(in_fm, out_fm, rank, True) #compute avg outer product, call Matlab to do SVD, extract Y and Z matrices
     sys.stderr.write("SVD and projections complete\n")    
     paramDict = computeCorrelations(Y,Z) #compute tensors, matrices, and vectors
@@ -75,7 +72,7 @@ def main():
         print >> featNameHandle, "INSIDE %s:%d"%(feature, inFeatIDs[feature])
     for feature in outFeatIDs:
         print >> featNameHandle, "OUTSIDE %s:%d"%(feature, outFeatIDs[feature])
-    featNameHandle.close()     
+    featNameHandle.close()        
 
 def printTree(stree):
     print "Current rule: "
@@ -86,6 +83,19 @@ def printTree(stree):
         printTree(child)
         print "back from child: "
         print child
+
+def readInWordClasses(filenames):
+    srcClassDict = {}
+    tgtClassDict = {}
+    srcFile = filenames[0]
+    tgtFile = filenames[1]
+    for line in open(srcFile, 'rb'):
+        elements = line.strip().split("\t")
+        srcClassDict[elements[1]] = int(elements[0], 2)
+    for line in open(tgtFile, 'rb'):
+        elements = line.strip().split("\t")
+        tgtClassDict[elements[1]] = int(elements[0], 2)
+    return (srcClassDict, tgtClassDict)
 
 def SVDandProjection(inFeatMat, outFeatMat, rank, matlab):
     avgOP = (1.0 / inFeatMat.shape[0]) * (inFeatMat.transpose() * outFeatMat)
@@ -179,28 +189,65 @@ def rescaleFeatures(sparseFeat, kappa):
     scaleVecSp = sp.spdiags(scaleVec.flatten(), [0], len(scaleVec), len(scaleVec))
     return sparseFeat * scaleVecSp
 
-def update_features(sent_tree, inFeat, outFeat, arityF, realF, hiero_loc=""):
+def computeOOVProbMass(inFeatures):
+    global exampleIDs
+    preTermSingletons = [k for k,v in exampleIDs.items() if len(v) == 1 and len(v[0].split()) == 1] #val is a string that provides current, inside and outside tree IDs
+    print "Number of pre-term singletons: %d"%(len(preTermSingletons))
+    numValidParents = 0
+    for preTerm in preTermSingletons: #preTerm is a "LHS ||| src ||| tgt" string
+        rowIdx = ruleToIdxMap[preTerm]["current"].pop()        
+        featID = addCheckFeature("RuleSelf_%s"%preTerm, "in")        
+        inFeatures[rowIdx].pop(featID)
+        inFeatures[rowIdx][addCheckFeature("RuleSelf_OOV", "in")] = 1        
+        if "parent" in ruleToIdxMap[preTerm]: #check if parent is included --> sometimes, parent is tertiary or higher rule which is invalid
+            numValidParents += 1
+            parentIdx = ruleToIdxMap[preTerm]["parent"].pop()        
+            featIDLeft = addCheckFeature("RuleLeft_%s"%preTerm, "in")
+            featIDRight = addCheckFeature("RuleRight_%s"%preTerm, "in")
+            if featIDLeft in inFeatures[parentIdx]:
+                inFeatures[parentIdx].pop(featIDLeft) #remove from dict
+                inFeatures[parentIdx][addCheckFeature("RuleLeft_OOV", "in")] = 1
+            elif featIDRight in inFeatures[parentIdx]:
+                inFeatures[parentIdx].pop(featIDRight)
+                inFeatures[parentIdx][addCheckFeature("RuleRight_OOV", "in")] = 1
+            else:
+                sys.stderr.write("Error! Cannot find parent of singleton preterminal %s\n"%preTerm)
+        outIdxStr = exampleIDs[preTerm][0]
+        exampleIDs.setdefault("[X] ||| <unk> ||| <unk>", []).append(outIdxStr)
+        exampleIDs.pop(preTerm) #remove preTerm rule from exampleIDs
+    print "Number of pre-term singletons with valid (unary or binary) parents: %d"%numValidParents
+
+def update_features(sent_tree, inFeat, outFeat, featBinDict):
     global exampleID, exampleIDs
+    global ruleToIdxMap
     curID = 0
     if len(sent_tree.children) < 3: #filter rules with # of NTs > 2
         insFeatDict = {} #keys are feature IDs, vals are binary 1/0
         outFeatDict = {}
-        extractRuleFeatures(sent_tree, insFeatDict, outFeatDict)
-        if arityF:
+        extractRuleFeatures(sent_tree, insFeatDict, outFeatDict)        
+        if "arityF" in featBinDict:
             extractArityFeatures(sent_tree, insFeatDict, outFeatDict)
-        if realF:
-            extractRealValFeatures(hiero_loc, sent_tree, insFeatDict, outFeatDict)
-        #any additional feature, define here
+        if "realF" in featBinDict:
+            extractRealValFeatures(featBinDict["realF"], sent_tree, insFeatDict, outFeatDict)
+        if "lexF" in featBinDict:
+            extractLexicalFeatures(sent_tree, insFeatDict, outFeatDict, False)
+        if "classF" in featBinDict:
+            extractLexicalFeatures(sent_tree, insFeatDict, outFeatDict, True, featBinDict["classF"])
+        #define additional feature handling here
         inFeat.append(insFeatDict)
         outFeat.append(outFeatDict)
         curID = exampleID
         exampleID += 1
     exIDs = []
     for child in sent_tree.children: #at this stage, recurse on children
-        childID = update_features(child, inFeat, outFeat, arityF, realF, hiero_loc)
+        childID = update_features(child, inFeat, outFeat, featBinDict)
+        if len(child.children) == 0 and len(sent_tree.children) < 3: #means child rule is a preTerm
+            ruleToIdxMap.setdefault(child.rule, {}).setdefault("parent", []).append(curID)
         exIDs.append("In:%d"%(childID))
     if len(sent_tree.children) < 3:
         exIDs.append("Out:%d"%curID)
+        if len(sent_tree.children) == 0: #means current rule is a preTerm
+            ruleToIdxMap.setdefault(sent_tree.rule, {}).setdefault("current", []).append(curID)
         key = sent_tree.rule #key is now the entire rule; to distinguish between S --> X1 X2 and X --> X1 X2
         exampleList = exampleIDs[key] if key in exampleIDs else []
         exampleList.append(' '.join(exIDs))
@@ -208,29 +255,63 @@ def update_features(sent_tree, inFeat, outFeat, arityF, realF, hiero_loc=""):
         print "%d %s ||| %s"%(curID, sent_tree.rule, ' '.join(exIDs))
     return curID
 
-def check_maxLex(sent_tree):
-    global max_Lex
-    if len(sent_tree.children) < 1: #pre-terminal
-        lenLex = len(sent_tree.src.split())
-        if lenLex > max_Lex:
-            max_Lex = lenLex
+def extractLexicalFeatures(sent_tree, inFeatDict, outFeatDict, isClass, classDictTuple=None):
+    addRuleLexFeatures(sent_tree, inFeatDict, "in", isClass, classDictTuple) #incorporate isClass info here
+    leftChild = True
+    for child in sent_tree.children: #add yield features of children
+        if isClass:
+            srcY = [classDictTuple[0][word] for word in child.srcYield().split()] #all words in yield should be in classDict, because classDict is from training data
+            tgtY = [classDictTuple[1][word] for word in child.tgtYield().split()]
+            addYieldFeatures(srcY, tgtY, inFeatDict, leftChild, "in")
+        else:
+            addYieldFeatures(child.srcYield().split(), child.tgtYield().split(), inFeatDict, leftChild, "in")
+        leftChild = False
+    if sent_tree.parent is not None:
+        addRuleLexFeatures(sent_tree.parent, outFeatDict, "out", isClass, classDictTuple)
+        leftChild = True
+        for child in sent_tree.parent.children:
+            if child is not sent_tree: #the other child
+                if isClass:
+                    srcY = [classDictTuple[0][word] for word in child.srcYield().split()]
+                    tgtY = [classDictTuple[1][word] for word in child.tgtYield().split()]
+                    addYieldFeatures(srcY, tgtY, outFeatDict, leftChild, "out")
+                else:
+                    addYieldFeatures(child.srcYield().split(), child.tgtYield().split(), outFeatDict, leftChild, "out")
+            else:
+                leftChild = False
+
+'''
+Given a source and target yield in the form of lists, this function adds the first
+and last words of the yields as features in the provided feature dictionary. 
+'''
+def addYieldFeatures(srcYield, tgtYield, featDict, isLeft, inOrOut):
+    if isLeft:
+        featDict[addCheckFeature("srcYieldLeftFirst_%s"%srcYield[0], inOrOut)] = 1
+        featDict[addCheckFeature("srcYieldLeftLast_%s"%srcYield[-1], inOrOut)] = 1
+        featDict[addCheckFeature("tgtYieldLeftFirst_%s"%tgtYield[0], inOrOut)] = 1
+        featDict[addCheckFeature("tgtYieldLeftLast_%s"%tgtYield[-1], inOrOut)] = 1
     else:
-        plainLex = re.sub(r' \[.*?\] ', ' ', sent_tree.src) #remove NTs
-        lenLex = len(plainLex.split())
-        if lenLex > max_Lex:
-            max_Lex = lenLex
+        featDict[addCheckFeature("srcYieldRightFirst_%s"%srcYield[0], inOrOut)] = 1
+        featDict[addCheckFeature("srcYieldRightLast_%s"%srcYield[-1], inOrOut)] = 1
+        featDict[addCheckFeature("tgtYieldRightFirst_%s"%tgtYield[0], inOrOut)] = 1
+        featDict[addCheckFeature("tgtYieldRightLast_%s"%tgtYield[-1], inOrOut)] = 1
 
-def printFeatureVector(filehandle, featureDict, ruleID,  whichtree):
-    featureVec = ["%d:%s"%(feature,str(featureDict[feature])) for feature in featureDict]
-    print >> filehandle, "%d %s X %s"%(ruleID, whichtree, ' '.join(featureVec))
-
-def printTrainingExample(sent_tree):
-    insideVecIDs = []
-    for child in sent_tree.children: #print out ruleID and corresponding inside and outside tree IDs
-        insideVecIDs.append(ruleIDs[child.rule])        
-    insideVecString = ' '.join(["In:%d"%(insideID) for insideID in insideVecIDs])
-    outsideVecString = "" if sent_tree.parent is None else "Out:%d"%(ruleIDs[sent_tree.parent.rule])
-    print "%d %s %s %s"%(ruleIDs[sent_tree.rule], sent_tree.rule, insideVecString, outsideVecString)
+'''
+Given a rule, this function extracts the lexical items from the rule
+(and if we are looking at word classes converts them into classes) and
+adds the items as features for the given rule. 
+'''
+def addRuleLexFeatures(sent_tree, featDict, inOrOut, isClass, classDictTuple):
+    expr = re.compile(r'\[([^]]*)\]')
+    lexItemsSrc = [item for item in sent_tree.src.split() if not expr.match(item)]
+    lexItemsTgt = [item for item in sent_tree.tgt.split() if not expr.match(item)]
+    if isClass:
+        lexItemsSrc = [classDictTuple[0][word] for word in lexItemsSrc]
+        lexItemsTgt = [classDictTuple[1][word] for word in lexItemsTgt]
+    for word in lexItemsSrc: #add lexical items of rule to inside features dict
+        featDict[addCheckFeature("lexSrc_%s"%word, inOrOut)] = 1
+    for word in lexItemsTgt:
+        featDict[addCheckFeature("lexTgt_%s"%word, inOrOut)] = 1    
     
 '''
 Note: as in real-valued features, this is only defined on a particular

@@ -39,6 +39,27 @@ class tree:
             rule_dict[raw_symbol] = rule.strip()
         return rule_dict
 
+    '''
+    returns yield of source side
+    '''
+    def srcYield(self):
+        if len(self.children) == 0: #we are at a pre-terminal
+            return self.src
+        else:
+            strYield = []
+            for child in self.children:
+                strYield.append(child.srcYield())
+            return ' '.join(strYield)
+
+    def tgtYield(self):
+        if len(self.children) == 0: #preTerm
+            return self.tgt
+        else:
+            strYield = []
+            for child in self.children:
+                strYield.append(child.tgtYield())
+            return ' '.join(strYield)
+
 
             
 
