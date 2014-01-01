@@ -23,6 +23,7 @@ import sys, commands, string, gzip, os, os.path, re, getopt, cPickle
 import numpy as np
 import scipy.sparse as sp
 import scipy.linalg as la
+import scipy.io as io
 from tree import tree
 
 exampleIDs = {} #key: rule; values: list of strings, each string being a 1/2/3-tuple: InIdxLeft (if there), InIdxRight (if there), OutIdx
