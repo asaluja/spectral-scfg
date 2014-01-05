@@ -16,17 +16,21 @@ arg1: dictionary of parameters (output of feature extraction step)
 stdin: tokenized sentences
 Update: incorporated simple multicore setup.  Basically, we divide the input
 test corpus into partitions or chunks, and each process handles one partition. 
-Usage: python intersect_scfg.py (-d) SpectralParams SentencesToDecode NumPartitions Partition Rank OutDir
+Usage: python intersect_scfg.py (-d/f/n) SpectralParams SentencesToDecode NumPartitions Partition Rank OutDir
 '''
 
-import sys, commands, string, cPickle, re, getopt, math, hg_io
+import sys, commands, string, time, gzip, cPickle, re, getopt, math, hg_io
 from trie import trie, ActiveItem, HyperGraph
 
-(opts, args) = getopt.getopt(sys.argv[1:], 'd')
-debug=False
+(opts, args) = getopt.getopt(sys.argv[1:], 'dnf')
+optsDict = {}
 for opt in opts:
-    if opt[0] == '-d':
-        debug=True
+    if opt[0] == '-d': #print info about each node in the hypergraph 
+        optsDict["debug"] = 1
+    elif opt[0] == '-n': #by default, we print edge marginal
+        optsDict["nodeMarginal"] = 1
+    elif opt[0] == '-f': #if marginal is < 0, we flip the sign
+        optsDict["flipSign"] = 1
 
 params_fh = open(args[0], 'rb')
 paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
@@ -46,67 +50,64 @@ def main():
     sentencesPerChunk = numSentences/numPartitions #int/int means sentencesPerChunk will be truncated
     start = partition*sentencesPerChunk
     end = (partition+1)*sentencesPerChunk if partition < numPartitions - 1 else numSentences
+    failed_sentences = []
     for lineNum in range(start,end):
         line = inputFile[lineNum]
-        print "bottom-up parse for input sentence: "
-        print line.strip()
         words = line.strip().split()
-        goal_nodes = []
-        hg = parse(words, grammarTrie, goal_nodes)
+        goalNode = [] #want to get back whatever is in goalNode, so pass it in as list
+        start = time.clock()
+        hg = parse(words, grammarTrie, goalNode)
+        parseTime = time.clock() - start
         active.clear()
         passive.clear()
         nodemap.clear()
-        if len(goal_nodes) > 0: #i.e., if we have created at least 1 node in the HG corresponding to goal
-            print "parsing success; length of sentence: %d"%(len(words))
-            if debug:
+        if len(goalNode) > 0: #i.e., if we have created at least 1 node in the HG corresponding to goal
+            print "SUCCESS; length: %d words, time taken: %.2f sec, sentence: %s"%(len(words), parseTime, line.strip())
+            if "debug" in optsDict:
                 printHGDebug(hg, lineNum)
             else:
-                marginals = hg_io.insideOutside(hg, paramDict, rank)
-                print "marginals computed over hypergraph"
-                convertHGToRules(hg, marginals, lineNum, words)
+                flipSign = "flipSign" in optsDict
+                nodeMarginal = "nodeMarginal" in optsDict
+                start = time.clock()
+                marginals = hg_io.insideOutside(hg, paramDict, rank, words, flipSign, nodeMarginal)
+                ioTime = time.clock() - start
+                print "marginals computed over hypergraph. time taken: %.2f sec"%(ioTime)
+                fh = gzip.open("%s/grammar.%d.gz"%(outDir, lineNum), 'w')
+                for key in marginals:
+                    fh.write("%s ||| spectral=%.3f\n"%(key, math.log(marginals[key])))
+                fh.write("[S] ||| [S_0_%d] ||| [1] ||| 0\n"%len(words))
+                fh.close()
         else:
-            print "parsing fail; length of sentence: %d"%(len(words))
+            print "FAIL; length: %d words, time taken: %.2f sec"%(len(words), parseTime)
+            failed_sentences.append(lineNum)
+            if "debug" in optsDict:
+                printHGDebug(hg, lineNum)
         sys.stdout.flush()
+    print "number of failed sentences: %d"%(len(failed_sentences))
 
+'''
+hypergraph print function for debugging purposes
+'''
 def printHGDebug(hg, line_num):
-    print "(Nodes/Edges): %d / %d"%(len(hg.nodes_), len(hg.edges_))
     fh = open("%s/%d"%(outDir, line_num), 'w')
+    print >> fh, "(Nodes/Edges): %d / %d"%(len(hg.nodes_), len(hg.edges_))
     for node in hg.nodes_: 
         print >> fh, "Node ID: %d"%(node.id)
         LHS = node.cat[:-1] + ",%d-%d]"%(node.i, node.j)
         for inEdgeID in node.in_edges_:
-            rule_decorated = decorateRule(hg, inEdgeID)
-            print >> fh, "%s ||| %s"%(LHS, rule_decorated)
+            #rule_decorated = decorateRule(hg, inEdgeID)
+            print >> fh, "%s ||| %s"%(LHS, hg.edges_[inEdgeID].rule)
     fh.close()
 
-def convertHGToRules(hg, marginals, line_num, words):
-    fh = open("%s/%d"%(outDir, line_num), 'w')
-    for node in hg.nodes_: 
-        LHS = node.cat[:-1] + ",%d-%d]"%(node.i, node.j)
-        marginal = marginals[node.id] #marginals defined over span
-        if marginal > 0:            
-            for inEdgeID in node.in_edges_:
-                key = ' ||| '.join([node.cat, hg.edges_[inEdgeID].rule])
-                src_decorated = decorateRule(hg, inEdgeID)
-                for target_rule in paramDict[key]: 
-                    src_tgt_decorated = "%s ||| %s"%(words[node.i], words[node.i]) if target_rule == "<unk>" else "%s ||| %s"%(src_decorated, target_rule)
-                    print >> fh, "%s ||| %s ||| %.5g"%(LHS, src_tgt_decorated, math.log(marginal))
-    fh.close()
-
-def decorateRule(hg, inEdgeID):
-    expr = re.compile(r'\[([^]]*)\]')
-    rule = hg.edges_[inEdgeID].rule
-    tail = hg.edges_[inEdgeID].tailNodes[:]
-    rule_decorated = []
-    for item in rule.split():
-        if expr.match(item): #NT, we need to decorate with its span
-            child = hg.nodes_[tail.pop(0)]
-            NT = child.cat[:-1] + ",%d-%d]"%(child.i,child.j)
-            rule_decorated.append(NT)
-        else:
-            rule_decorated.append(item)
-    return ' '.join(rule_decorated)
-
+'''
+main function for bottom-up parser with Earley-style rules. 
+The active chart is first seeded with pointers to the root
+node of a source rules trie. Then, in a bottom-up manner, 
+we advance the dots for each cell item, and then convert completed
+rules in a cell to the passive chart, or deal with NTs in active
+items just proved.  At the end, we look at the passive items in
+the cell corresponding to the sentence to see if [S] is there. 
+'''
 def parse(words, grammarTrie, goal_idx):
     N = len(words)
     hg = HyperGraph()
@@ -120,8 +121,8 @@ def parse(words, grammarTrie, goal_idx):
                 rules = activeItem.srcTrie.getRules()
                 #if we are at (0,N), then we should only apply rules that have 'S' as LHS; otherwise, we should only apply rules that have 'X' as LHS
                 rules = [rule for rule in rules if rule[0] == '[S]'] if (i == 0) and (j == N) else [rule for rule in rules if rule[0] == '[X]'] 
-                if len(rules) > 0:
-                    applyRules(i, j, rules, activeItem.tailNodeVec, hg)
+                for rule in rules:
+                    applyRule(i, j, rule, activeItem.tailNodeVec, hg)
             if j < N: #the below function includes NTs that were just proved into new binaries, which is unnecessary for the end token
                 extendActiveItems(i, i, j) #dealing with NTs that were just proved
         if (0,N) in passive: #we have spanned the entire input sentence
@@ -160,10 +161,15 @@ def advanceDotsForAllItemsInCell(start, end, words):
         ai = actItem.extendTerminal(word)
         if ai is not None:
             active.setdefault((start,end), []).append(ai)
-        elif end-start == 1: #ai is None but we are covering an OOV word
-            print "Extended OOV for span %d,%d"%(start,end)
-            active.setdefault((start,end), []).append(actItem.extendOOV())
-
+        if end-start == 1: #OOV handling
+            if ai is None:
+                active.setdefault((start,end), []).append(actItem.extendOOV())                
+            else: #check if active item has any rules in its bin
+                if len(ai.srcTrie.getRules()) == 0: #handles the case where rule starts with OOV word, but no rule that actually covers OOV word
+                    active.setdefault((start,end), []).append(actItem.extendOOV())
+'''
+function that extends active items over non-terminals. 
+'''
 def extendActiveItems(start, split, end):
     global active
     icell, idxs = [], []
@@ -177,10 +183,11 @@ def extendActiveItems(start, split, end):
             if ai is not None:
                 active.setdefault((start,end), []).append(ai)
 
-def applyRules(start, end, rules, tailNodes, hg):
-    for rule in rules:
-        applyRule(start, end, rule, tailNodes, hg)
-
+'''
+Given a rule, does the necessary book-keeping to 
+convert that rule to the passive chart, and adds the 
+appropriate nodes and edges to the hypergraph. 
+'''
 def applyRule(start, end, rule, tailNodes, hg):
     global nodemap, passive
     edge = hg.addEdge(rule[1], tailNodes) #rule[1] is src RHS of rule

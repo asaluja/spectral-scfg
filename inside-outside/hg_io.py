@@ -13,6 +13,8 @@ The current interpretation that I have is that marginals should be
 defined over spans, not rules? I'm not quite sure how we can compute
 marginals by multiplying alphas over tail nodes when the vector
 multiplications don't work out.  
+Update (Jan 2, 2013): added two different marginal computations: 
+node marginal and edge marginal. 
 '''
 
 import sys, commands, string, re
@@ -73,18 +75,100 @@ def computeOutside(hg, paramDict, rank, alphaDict):
                     x_alpha_left = alphaDict[tail[0]]
                     betaDict[tail[1]] += np.tensordot(result, x_alpha_left, axes=([0], [0]))                
     return betaDict
+
+def decorateSrcRule(hg, inEdgeID):
+    expr = re.compile(r'\[([^]]*)\]')
+    rule = hg.edges_[inEdgeID].rule
+    tail = hg.edges_[inEdgeID].tailNodes[:]
+    rule_decorated = []
+    for item in rule.split():
+        if expr.match(item): #NT, we need to decorate with its span
+            child = hg.nodes_[tail.pop(0)]
+            NT = child.cat[:-1] + "_%d_%d]"%(child.i,child.j)
+            rule_decorated.append(NT)
+        else:
+            rule_decorated.append(item)
+    return ' '.join(rule_decorated)
+
+def decorateTgtRule(rule):
+    expr = re.compile(r'\[([^]]*)\]')
+    rule_decorated = []
+    for item in rule.split():
+        if expr.match(item): #NT, we need to strip down
+            NTIdx = int(item.split(',')[1][0])
+            rule_decorated.append("[%d]"%NTIdx)
+        else:
+            rule_decorated.append(item)
+    return ' '.join(rule_decorated)
+
+'''
+in nodeMarginals, the marginal is associated with an NT span. 
+This corresponds exactly to a node. 
+'''
+def nodeMarginals(alpha, beta, hg, flipSign, words):
+    marginals = {}
+    for node in hg.nodes_:
+        LHS = node.cat[:-1] + "_%d_%d]"%(node.i, node.j)
+        marginal = np.dot(alpha[node.id], beta[node.id])        
+        if marginal < 0:
+            if flipSign:
+                marginal = -marginal
+            else:
+                sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g\n"%(hg.nodes_[nodeID].i, hg.nodes_[nodeID].j, marginals[nodeID]))
+                return marginals
+        for inEdgeID in node.in_edges_: #the same marginal is used for all incoming edges (rules)
+            key = ' ||| '.join([node.cat, hg.edges_[inEdgeID].rule])
+            src_decorated = decorateSrcRule(hg, inEdgeID)
+            for target_rule in paramDict[key]:
+                src_tgt_decorated = "%s ||| %s"%(words[node.i], words[node.i]) if target_rule == "<unk>" else "%s ||| %s"%(src_decorated, decorateTgtRule(target_rule))
+                lhs_src_tgt = ' ||| '.join([LHS, src_tgt_decorated])
+                marginals[lhs_src_tgt] = marginal #associate the marginal to each rule
+    return marginals
+
+'''
+in edge marginals, the marginal is associated with a particular
+rule or edge.  We loop through all edges, obtain the beta vector
+of the head node and the alpha vectors of the tail nodes, and
+multiply them through the parameter associated with the rule to
+get the edge marginal.  
+'''
+def edgeMarginals(alpha, beta, hg, flipSign, paramDict, words):
+    marginals = {}
+    for edge in hg.edges_:
+        head = hg.nodes_[edge.headNode]
+        tail = edge.tailNodes        
+        beta_head = beta[edge.headNode]
+        LHS = head.cat[:-1] + "_%d_%d]"%(head.i, head.j)
+        key = ' ||| '.join([head.cat, edge.rule])
+        src_decorated = decorateSrcRule(hg, edge.id)
+        arity = checkArity(edge.rule)
+        assert arity == len(tail)
+        for target_rule in paramDict[key]:
+            src_tgt_decorated = "%s ||| %s"%(words[head.i], words[head.i]) if target_rule == "<unk>" else "%s ||| %s"%(src_decorated, decorateTgtRule(target_rule))
+            lhs_src_tgt = ' ||| '.join([LHS, src_tgt_decorated])
+            marginal = 0
+            if arity == 0:
+                marginal = beta_head.dot(paramDict[key][target_rule])
+            elif arity == 1:
+                marginal = beta_head.dot(paramDict[key][target_rule]).dot(alpha[tail[0]])
+            elif arity == 2:
+                result = np.tensordot(paramDict[key][target_rule], beta_head, axes=([0], [0])) 
+                marginal = alpha[tail[0]].dot(result).dot(alpha[tail[1]])
+            else:
+                sys.stderr.write("Arity > 2! Cannot compute marginals for rule %s\n"%lhs_src_tgt)
+            if marginal < 0:
+                if flipSign:
+                    marginal = -marginal
+                else:
+                    sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g\n"%(head.i, head.j, marginal))
+            if marginal > 0:
+                marginals[lhs_src_tgt] = marginal
+    return marginals
                 
-def insideOutside(hg, paramDict, rank):
+def insideOutside(hg, paramDict, rank, words, flipSign, nodeMarginal):
     alpha = computeInside(hg, paramDict, rank)    #paramDict keys are 'LHS ||| src_RHS' format
     beta = computeOutside(hg, paramDict, rank, alpha)
-    marginals = {}
-    for nodeID in alpha:
-        marginals[nodeID] = np.dot(alpha[nodeID], beta[nodeID])
-        if marginals[nodeID] < 0:
-            flipped = -marginals[nodeID]
-            marginals[nodeID] = flipped
-        #if marginals[nodeID] > 1 or marginals[nodeID] < 0:
-        #    sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g\n"%(hg.nodes_[nodeID].i, hg.nodes_[nodeID].j, marginals[nodeID]))
-    return marginals
+    marginals = nodeMarginals(alpha, beta, hg, flipSign, words) if nodeMarginal else edgeMarginals(alpha, beta, hg, flipSign, paramDict, words)
+    return marginals #key of marginals is a decorated entire rule LHS ||| src RHS ||| tgt RHS
     
 

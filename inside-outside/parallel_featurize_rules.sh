@@ -11,16 +11,15 @@
 #spans.  Each set of rules is written out to a sentence-specific file. 
 ######################
 
-inputFile=$1
-params=$2
-rank=$3
+inputDir=$1
+hieroDir=$2
+outputDir=$3
 numPartitions=$4
-outDir=$5
-script=/usr0/home/avneesh/spectral-scfg/code/inside-outside/intersect_scfg.py
+script=/usr0/home/avneesh/spectral-scfg/code/inside-outside/featurize_rules.py
 
 for (( i = 0; i < numPartitions; i++ )); do
-    python $script -f $params $inputFile $numPartitions $i $rank $outDir &
+    python $script $inputDir $hieroDir $outputDir $numPartitions $i &
 done
 wait
-echo "completed marginal computations for $inputFile"
+echo "completed decorating and featurizing rules."
     

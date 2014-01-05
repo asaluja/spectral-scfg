@@ -17,6 +17,7 @@ Usage: python feature_extraction.py -a -r/usr0/home/avneesh/feat.grammar-loc /us
 Update: December 31, 2013: added lexical and lexical class features.  Note that the word classes should 
 be given in two separate files, one for each language, and that these paths should be separated by a ':'
 Usage: python feature_extraction.py -a -c/path/to/wordClasses -r/path/to/suffixArrayGrammar /path/to/minimalGrammar /path/to/featureNamesOutput rank /path/to/parametersOutput
+Update: January 3, 2013: added computing OOV probability mass as an option
 '''
 
 import sys, commands, string, gzip, os, os.path, re, getopt, cPickle
@@ -35,17 +36,21 @@ outFeatIDs = {} #same as inFeatIDs
 outFeatID = 0
 def main():
     featBinDict = {}
-    (opts, args) = getopt.getopt(sys.argv[1:], 'ac:lr:')
+    (opts, args) = getopt.getopt(sys.argv[1:], 'ac:lop:r:')
     for opt in opts:
-        if opt[0] == '-a':
+        if opt[0] == '-a': #arity feature
             featBinDict["arityF"] = 1
-        elif opt[0] == '-r':
-            featBinDict["realF"] = opt[1]
-        elif opt[0] == '-l':
-            featBinDict["lexF"] = 1
-        elif opt[0] == '-c':
+        elif opt[0] == '-c': #lexical class features
             filenames = opt[1].split(':')
             featBinDict["classF"] = readInWordClasses(filenames)
+        elif opt[0] == '-l': #lexical features
+            featBinDict["lexF"] = 1
+        elif opt[0] == '-o': #OOV
+            featBinDict["OOV"] = 1
+        elif opt[0] == '-p': #prune rules
+            featBinDict["filterRules"] = int(opt[1])
+        elif opt[0] == '-r': #real-valued features
+            featBinDict["realF"] = opt[1]
     minRule_grammars_loc = args[0]
     numSentences = len(os.listdir(minRule_grammars_loc))
     featname_out_loc = args[1]
@@ -58,15 +63,18 @@ def main():
         root_rules.append(update_features(sync_tree, inFeatures, outFeatures, featBinDict))
     sys.stderr.write("Feature extraction complete\n")
     kappa = 5.0
-    rank = int(args[2])    
-    computeOOVProbMass(inFeatures)
+    rank = int(args[2])
+    if "OOV" in featBinDict:
+        computeOOVProbMass(inFeatures)
     in_fm = convertToSpMat(inFeatures, len(inFeatIDs), kappa) #convert to SpMat also does the feature scaling
     out_fm = convertToSpMat(outFeatures, len(outFeatIDs), kappa)
     Y,Z = SVDandProjection(in_fm, out_fm, rank, True) #compute avg outer product, call Matlab to do SVD, extract Y and Z matrices
     sys.stderr.write("SVD and projections complete\n")    
-    paramDict = computeCorrelations(Y,Z) #compute tensors, matrices, and vectors
+    paramDict, countDict = computeCorrelations(Y,Z) #compute tensors, matrices, and vectors
     paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
     sys.stderr.write("Parameter estimation complete\n")
+    if "filterRules" in featBinDict:
+        filterRulesByCount(countDict, paramDict, featBinDict["filterRules"])
     cPickle.dump(paramDict, open(args[3], "wb")) #write out in cPickle format for I/O algorithm
     featNameHandle = open(featname_out_loc, 'w')
     for feature in inFeatIDs: #write out feature names and IDs
@@ -75,6 +83,9 @@ def main():
         print >> featNameHandle, "OUTSIDE %s:%d"%(feature, outFeatIDs[feature])
     featNameHandle.close()        
 
+'''
+for debugging purposes
+'''
 def printTree(stree):
     print "Current rule: "
     print stree.rule
@@ -85,6 +96,11 @@ def printTree(stree):
         print "back from child: "
         print child
 
+'''
+for word class feature - reads in word classes that were
+produced from P. Liang's Brown Clustering code (two files,
+one for each language) and returns a pair of dictionaries
+'''
 def readInWordClasses(filenames):
     srcClassDict = {}
     tgtClassDict = {}
@@ -98,6 +114,12 @@ def readInWordClasses(filenames):
         tgtClassDict[elements[1]] = int(elements[0], 2)
     return (srcClassDict, tgtClassDict)
 
+'''
+given two feature matrices and a rank, this code first computes
+the average outer product of the features, then interfaces with matlab
+to compute the SVD, and then returns lower-dimensional projections of
+the feature matrices. 
+'''
 def SVDandProjection(inFeatMat, outFeatMat, rank, matlab):
     avgOP = (1.0 / inFeatMat.shape[0]) * (inFeatMat.transpose() * outFeatMat)
     U, S, V = matlabInterface(avgOP, rank) if matlab else la.svd(avgOP, full_matrices=False)    
@@ -105,6 +127,10 @@ def SVDandProjection(inFeatMat, outFeatMat, rank, matlab):
     Z = outFeatMat.dot(V).dot(np.linalg.inv(S))
     return (Y, Z)
 
+'''
+specific function using os system calls to interface
+with matlab via the command line. 
+'''
 def matlabInterface(avgOP, rank):
     pwd = os.getcwd()
     out_loc = pwd + "/matlab_temp"
@@ -114,9 +140,28 @@ def matlabInterface(avgOP, rank):
     os.system('matlab -nodesktop -nosplash -nojvm -r "matlab_svd ' + out_loc + " %s"%rank + '"')
     os.chdir(pwd)
     mat_return = io.loadmat(out_loc)
-    #os.remove(out_loc)
     return mat_return['U'].newbyteorder('='), mat_return['S'].newbyteorder('='), mat_return['V'].newbyteorder('=')
 
+'''
+function used to prune rules using MLE.  if the number of unique target
+side rules for a given source side exceeds a limit, we sort the rules by
+count and prune away the low count rules beyond the limit. 
+'''
+def filterRulesByCount(countDict, paramDict, limit):
+    for src_rule in countDict:
+        if len(countDict[src_rule]) > limit: #then we need to prune
+            sorted_tgtRules = sorted(countDict[src_rule], key=countDict[src_rule].get, reverse=True)
+            rules_to_filter = sorted_tgtRules[limit:]            
+            for rule in rules_to_filter:
+                paramDict[src_rule].pop(rule) #remove it from the parameter srcDict
+            if len(rules_to_filter) > 0:
+                sys.stderr.write("Source RHS: %s; out of %d rules, filtered %d\n"%(src_rule, len(countDict[src_rule]), len(rules_to_filter)))
+
+'''
+estimate the start of sentence parameters; we loop
+through all rules that occur at the root (i.e., left hand side
+is [S]) and accumulate their inside scores.  
+'''
 def estimatePiParams(root_rules, Y, rank):
     outerProd = np.zeros(shape=(rank))
     for row_idx in root_rules:
@@ -124,8 +169,16 @@ def estimatePiParams(root_rules, Y, rank):
     outerProd = np.multiply(outerProd, 1.0/len(root_rules))
     return outerProd
 
+'''
+the main function that computes the parameters associated with 
+the various rules by computing outer products of feature vectors. 
+Row indices to the inside and outside feature vectors are stored
+and used to compute the outer products. We also maintain MLE counts
+for each source phrase rule. 
+'''
 def computeCorrelations(Y, Z):    
     paramDict = {}
+    countDict = {}
     numExamples = Y.shape[0]
     rank = Y.shape[1]
     for rule in exampleIDs: #rule is an actual rule LHS ||| src ||| tgt
@@ -156,10 +209,17 @@ def computeCorrelations(Y, Z):
         src_key = ' ||| '.join(elements[:-1])
         tgt_key = elements[-1]
         srcDict = paramDict[src_key] if src_key in paramDict else {}
+        srcCountDict = countDict[src_key] if src_key in countDict else {}
         srcDict[tgt_key] = outerProd
+        srcCountDict[tgt_key] = len(exampleIDs[rule])
         paramDict[src_key] = srcDict
-    return paramDict
-        
+        countDict[src_key] = srcCountDict
+    return (paramDict, countDict)
+
+'''
+function to compute generalized outer product (tensor product)
+for 3 vectors.  
+'''        
 def tensorProduct(vec1, vec2, vec3):
     vs = [vec1, vec2, vec3]
     shape = map(len, vs)
@@ -169,6 +229,12 @@ def tensorProduct(vec1, vec2, vec3):
     #then, multiply directly
     return reduce(np.multiply, np.ix_(*vs))
 
+'''
+given a list of dictionaries (each dictionary corresponding
+to a rule, where the key is a featureID and the value is 1)
+this function converts the dictionaries into a SciPy sparse
+feature matrix. 
+'''
 def convertToSpMat(rawFeatMat, numFeatures, kappa):
     rows = []
     cols = []
@@ -182,6 +248,11 @@ def convertToSpMat(rawFeatMat, numFeatures, kappa):
     scaledFeat = rescaleFeatures(sparseFeat, kappa)
     return scaledFeat
 
+'''
+this function rescales the features based on the variance of 
+the feature counts, so more common features get scaled down
+and less frequent features get scaled up.  
+'''
 def rescaleFeatures(sparseFeat, kappa):
     spFeatTransSquared = sparseFeat.transpose(copy=True)
     spFeatTransSquared.data **= 2
@@ -190,10 +261,17 @@ def rescaleFeatures(sparseFeat, kappa):
     scaleVecSp = sp.spdiags(scaleVec.flatten(), [0], len(scaleVec), len(scaleVec))
     return sparseFeat * scaleVecSp
 
+'''
+this function goes through the singleton rules (rules that
+only appear once in the corpus) and eliminates them from 
+the feature matrix.  Since we only look at singleton pre-terminals,
+we do not need to change the features of the outside matrix. 
+Once features are updated, we also update the example IDs correspondingly. 
+'''
 def computeOOVProbMass(inFeatures):
     global exampleIDs
     preTermSingletons = [k for k,v in exampleIDs.items() if len(v) == 1 and len(v[0].split()) == 1] #val is a string that provides current, inside and outside tree IDs
-    print "Number of pre-term singletons: %d"%(len(preTermSingletons))
+    sys.stderr.write("Number of pre-term singletons: %d\n"%(len(preTermSingletons)))
     numValidParents = 0
     for preTerm in preTermSingletons: #preTerm is a "LHS ||| src ||| tgt" string
         rowIdx = ruleToIdxMap[preTerm]["current"].pop()        
@@ -216,8 +294,16 @@ def computeOOVProbMass(inFeatures):
         outIdxStr = exampleIDs[preTerm][0]
         exampleIDs.setdefault("[X] ||| <unk> ||| <unk>", []).append(outIdxStr)
         exampleIDs.pop(preTerm) #remove preTerm rule from exampleIDs
-    print "Number of pre-term singletons with valid (unary or binary) parents: %d"%numValidParents
+    sys.stderr.write("Number of pre-term singletons with valid (unary or binary) parents: %d\n"%numValidParents)
 
+'''
+the main feature extraction function.  A recursive function that, 
+given a tree, controls the calls to the specific feature extraction
+functions, and adds the results to the list of dictionaries.  It then
+recursively calls update_features on the children, and also maintains
+the example list (for a given unique rule, where it occurs, who its
+inside and outside trees where, etc.)
+'''
 def update_features(sent_tree, inFeat, outFeat, featBinDict):
     global exampleID, exampleIDs
     global ruleToIdxMap
@@ -256,6 +342,12 @@ def update_features(sent_tree, inFeat, outFeat, featBinDict):
         print "%d %s ||| %s"%(curID, sent_tree.rule, ' '.join(exIDs))
     return curID
 
+'''
+extracts words (or word classes) of any lexical items
+in the current rule, as well as those in the yield of the
+left and right children, and the outside tree. We currently
+look at only the first and last words in the yield. 
+'''
 def extractLexicalFeatures(sent_tree, inFeatDict, outFeatDict, isClass, classDictTuple=None):
     addRuleLexFeatures(sent_tree, inFeatDict, "in", isClass, classDictTuple) #incorporate isClass info here
     leftChild = True
