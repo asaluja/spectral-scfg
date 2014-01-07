@@ -36,19 +36,19 @@ outFeatIDs = {} #same as inFeatIDs
 outFeatID = 0
 def main():
     featBinDict = {}
-    (opts, args) = getopt.getopt(sys.argv[1:], 'ac:lop:r:')
+    (opts, args) = getopt.getopt(sys.argv[1:], 'ac:f:lor:')
     for opt in opts:
         if opt[0] == '-a': #arity feature
             featBinDict["arityF"] = 1
         elif opt[0] == '-c': #lexical class features
             filenames = opt[1].split(':')
             featBinDict["classF"] = readInWordClasses(filenames)
+        elif opt[0] == '-f': #filter rules
+            featBinDict["filterRules"] = int(opt[1])
         elif opt[0] == '-l': #lexical features
             featBinDict["lexF"] = 1
         elif opt[0] == '-o': #OOV
             featBinDict["OOV"] = 1
-        elif opt[0] == '-p': #prune rules
-            featBinDict["filterRules"] = int(opt[1])
         elif opt[0] == '-r': #real-valued features
             featBinDict["realF"] = opt[1]
     minRule_grammars_loc = args[0]

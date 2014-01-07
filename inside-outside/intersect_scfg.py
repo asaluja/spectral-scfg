@@ -95,7 +95,6 @@ def printHGDebug(hg, line_num):
         print >> fh, "Node ID: %d"%(node.id)
         LHS = node.cat[:-1] + ",%d-%d]"%(node.i, node.j)
         for inEdgeID in node.in_edges_:
-            #rule_decorated = decorateRule(hg, inEdgeID)
             print >> fh, "%s ||| %s"%(LHS, hg.edges_[inEdgeID].rule)
     fh.close()
 

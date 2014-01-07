@@ -1,16 +1,17 @@
 #!/usr/bin/python -tt
 
 '''
-File: decorate_minrules_with_features.py
-Date: October 13, 2013
+File: featurize_rules.py 
+Date: January 4, 2013 (based on decorate_minrules_with_features.py script)
 Author: Avneesh Saluja (avneesh@cs.cmu.edu)
 Description: this script takes as arguments the following:
-arg 1: location of files with rules generated through the post-processed minimal
-rule output (of of H. Zhang, D. Gildea, and D. Chiang, NAACL 2008)
+arg 1: location of per-sentence grammars of minimal rules with associated spectral features
 arg 2: location of files with full set of rules extracted from suffix array structure
 (these rules are already featurized)
-arg 3: location of output files 
-Usage: python decorate_minrules_with_features.py minRules-dir fullRules-dir output-dir
+arg 3: location of output directory for featurized per-sentence grammars
+arg 4: number of partitions
+arg 5: this particular partition number
+Usage: python featurize_rules.py minRules-dir fullRules-dir output-dir numPartitions partitionNum
 '''
 
 import sys, commands, string, gzip, os, re
@@ -30,9 +31,10 @@ def extractFeatureList(gzfile):
     return features_list
 
 def removeSpanInfo(elements):
+    noLex = False
     expr = re.compile(r'\[([^]]*)\]')
-    LHS = elements[0].split('_')[0] + ']'
-    srcRHSArr = []
+    LHS = elements[0] if elements[0] == '[S]' else elements[0].split('_')[0] + ']'
+    srcRHSArr = []    
     NTCount = 1
     for item in elements[1].split():
         if expr.match(item):
@@ -40,6 +42,8 @@ def removeSpanInfo(elements):
             NTCount += 1
         else:
             srcRHSArr.append(item)
+    if NTCount - 1 == len(elements[1].split()): #then we are dealing with a rule with no lex items
+        noLex = True
     tgtRHSArr = []
     for item in elements[2].split():
         if expr.match(item):
@@ -48,7 +52,7 @@ def removeSpanInfo(elements):
             tgtRHSArr.append(item)
     srcRHS = ' '.join(srcRHSArr)
     tgtRHS = ' '.join(tgtRHSArr) 
-    return ' ||| '.join([LHS, srcRHS, tgtRHS])
+    return (' ||| '.join([LHS, srcRHS, tgtRHS]), noLex)
 
 def main():
     args = sys.argv[1:]
@@ -57,11 +61,11 @@ def main():
     outDir_loc = args[2]
     numPartitions = int(args[3])
     partition = int(args[4])
-    numSentences = len(os.listdir(minRule_grammars_loc))
+    hiero_grammars = os.listdir(hiero_grammars_loc)            
+    numSentences = len(hiero_grammars)
     sentencesPerChunk = numSentences/numPartitions
     start = partition*sentencesPerChunk
     end = (partition+1)*sentencesPerChunk if partition < numPartitions - 1 else numSentences
-    hiero_grammars = os.listdir(hiero_grammars_loc)        
     features = extractFeatureList(hiero_grammars_loc + hiero_grammars[0])
     featureStr = ' '.join(["%s=0.0"%(feature) for feature in features])
     for sentNum in range(start,end):
@@ -76,14 +80,25 @@ def main():
             for rule in minrule_fh:
                 numRulesTotal += 1
                 elements = rule.strip().split(' ||| ')
-                key = removeSpanInfo(elements[:3])
+                key, noLex = removeSpanInfo(elements[:3])
                 if key in hiero_rules:
                     numRulesInHiero += 1
                 line_out = rule.strip() + " DeletionRule=0.0 " + hiero_rules[key] if key in hiero_rules else rule.strip() + " DeletionRule=1.0 " + featureStr
-                out_fh.write("%s\n"%line_out)
+                if noLex: 
+                    assert key not in hiero_rules #if not lexical, key should never be in hiero rules
+                    line_out += " Glue=1.0"
+                    ntNumbers = [int(ntIdx) for ntIdx in re.findall(r'\[([^]]*)\]', elements[2])]
+                    if len(ntNumbers) == 2:                        
+                        if ntNumbers[0] > ntNumbers[1]:
+                            line_out += " Inverse=1.0"
+                if elements[0] == '[S]': #top level rule, overwrite
+                    out_fh.write("%s ||| 0\n"%(' ||| '.join(elements[:3])))
+                else:
+                    out_fh.write("%s\n"%line_out)
             minrule_fh.close()
             print "for sentence number %d, out of %d rules, %d are also in hiero"%(sentNum, numRulesTotal, numRulesInHiero)
         else:
+            print "could not find minrule grammar for sentence number %d, taking hiero grammar instead"%(sentNum)
             for key in hiero_rules:
                 out_fh.write("%s ||| spectral=0.0 DeletionRule=0.0 %s\n"%(key, hiero_rules[key]))
         out_fh.close()
