@@ -13,6 +13,7 @@ arg 3: location of output files
 Usage: python decorate_minrules_with_features.py minRules-dir fullRules-dir output-dir
 Update (Jan 4, 2013): included per-sentence grammar writing ability
 Update (Jan 6, 2013): included filtering capability based on MLE for non per-sentence grammar writing
+Update (Jan 7, 2013): made a multiprocess version of this code
 '''
 
 import sys, commands, string, gzip, os, getopt, re
@@ -80,7 +81,8 @@ def decorateSentenceGrammar(minRule_file, hiero_file, out_file, featureStr, optD
         print "for grammar %s, out of %d rules, %d are also in hiero"%(minRule_file, numRulesTotal, numRulesInHiero)
         if "perSentence" in optDict: #add the NT only rules, then close
             out_fh.write("[X] ||| [X,1] [X,2] ||| [X,1] [X,2] ||| DeletionRule=1.0 Glue=1 %s\n"%featureStr)
-            out_fh.write("[X] ||| [X,1] [X,2] ||| [X,2] [X,1] ||| DeletionRule=1.0 Glue=1 %s\n"%featureStr)
+            out_fh.write("[X] ||| [X,1] [X,2] ||| [X,2] [X,1] ||| DeletionRule=1.0 Glue=1 Inverse=1 %s\n"%featureStr)            
+            out_fh.write("[S] ||| [X,1] ||| [X,1] ||| 0\n") #no features defined on the top-level rule, just for parsing completion purposes
             out_fh.close()
 
 def init(sr, cd):
@@ -129,7 +131,8 @@ def main():
             for rule in seen_rules_uniq:
                 output_fh.write("%s\n"%(rule))
         output_fh.write("[X] ||| [X,1] [X,2] ||| [X,1] [X,2] ||| DeletionRule=1.0 Glue=1 %s\n"%featureStr)
-        output_fh.write("[X] ||| [X,1] [X,2] ||| [X,2] [X,1] ||| DeletionRule=1.0 Glue=1 %s\n"%featureStr)        
+        output_fh.write("[X] ||| [X,1] [X,2] ||| [X,2] [X,1] ||| DeletionRule=1.0 Glue=1 Inverse=1 %s\n"%featureStr)        
+        output_fh.write("[S] ||| [X,1] ||| [X,1] ||| 0\n") #no features defined on the top-level rule, just for parsing completion purposes
         output_fh.close()
 
 if __name__ == "__main__":

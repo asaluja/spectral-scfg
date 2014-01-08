@@ -16,8 +16,8 @@ class tree:
         raw_rule = rule_dict[root_idx]
         pattern = re.compile('\[[0-9]+')        
         self.rule = pattern.sub('[X', raw_rule)
-        if root == None: #i.e., we are at the root of the sentence
-            self.rule = self.rule.replace('[X]', '[S]')
+        #if root == None: #i.e., we are at the root of the sentence
+        #    self.rule = self.rule.replace('[X]', '[S]')
         self.src = self.rule.split(' ||| ')[1] #extract src and tgt phrases
         self.tgt = self.rule.split(' ||| ')[2]
         self.children = []

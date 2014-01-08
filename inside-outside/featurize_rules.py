@@ -90,7 +90,7 @@ def main():
                     ntNumbers = [int(ntIdx) for ntIdx in re.findall(r'\[([^]]*)\]', elements[2])]
                     if len(ntNumbers) == 2:                        
                         if ntNumbers[0] > ntNumbers[1]:
-                            line_out += " Inverse=1.0"
+                            line_out += " Inverse=1"
                 if elements[0] == '[S]': #top level rule, overwrite
                     out_fh.write("%s ||| 0\n"%(' ||| '.join(elements[:3])))
                 else:

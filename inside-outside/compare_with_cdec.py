@@ -29,13 +29,15 @@ def readInRules(filename):
             rules_used = list(set(rules_used))
             #figure out span
             if len(rules_used) > 0:
-                states = rules_used[0].strip().split(' ||| ')[0].split(',')
-                span = states[1].split('-')
+                states = rules_used[0].strip().split(' ||| ')[0].split('_')
+                #span = states[1].split('-')
                 cat = states[0]
                 if cat == "[Goal":
                     continue
-                key = (int(span[0]), int(span[1][:-1]))
-                nodeDict[key] = rules_used
+                #key = (int(span[0]), int(span[1][:-1]))
+                key = (int(states[1]), int(states[2][:-1]))
+                if key not in nodeDict:
+                    nodeDict[key] = rules_used
         else:
             line_num += 1
     return nodeDict        
@@ -46,20 +48,34 @@ def main():
     for span in ourDict:
         if span not in cdecDict:
             print "Span (%d,%d) not in cdec rules!"%(span[0], span[1])
+            print ourDict[span]
         else:
+            '''
+            print "our parse, Span (%d,%d) is: "%(span[0], span[1])
+            print ourDict[span]
+            print "cdec parse, Span (%d,%d) is: "%(span[0], span[1])
+            print cdecDict[span]
+            '''
             setDiff = set(ourDict[span]) - set(cdecDict[span])
             if len(setDiff) > 0:
-                print "Span (%d,%d) contain different rules for cdec output and our output"%(span[0], span[1])
+                print "Checking rules in our parser: span (%d,%d) contain different rules for cdec output and our output"%(span[0], span[1])
                 print "Differing rule(s) are: "
                 for rule in setDiff:
                     print rule            
     for span in cdecDict:
         if span not in ourDict:
             print "Span (%d,%d) not in our rules!"%(span[0], span[1])
+            print cdecDict[span]
         else:
+            '''
+            print "our parse, Span (%d,%d) is: "%(span[0], span[1])
+            print ourDict[span]
+            print "cdec parse, Span (%d,%d) is: "%(span[0], span[1])
+            print cdecDict[span]
+            '''
             setDiff = set(ourDict[span]) - set(cdecDict[span])
             if len(setDiff) > 0:
-                print "Span (%d,%d) contain different rules for cdec output and our output"%(span[0], span[1])
+                print "Checking rules in cdec parser: span (%d,%d) contain different rules for cdec output and our output"%(span[0], span[1])
                 print "Differing rule(s) are: "
                 for rule in setDiff:
                     print rule            

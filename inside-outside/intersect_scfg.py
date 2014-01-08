@@ -54,14 +54,13 @@ def main():
     for lineNum in range(start,end):
         line = inputFile[lineNum]
         words = line.strip().split()
-        goalNode = [] #want to get back whatever is in goalNode, so pass it in as list
         start = time.clock()
-        hg = parse(words, grammarTrie, goalNode)
+        hg, goalReached = parse(words, grammarTrie)
         parseTime = time.clock() - start
         active.clear()
         passive.clear()
         nodemap.clear()
-        if len(goalNode) > 0: #i.e., if we have created at least 1 node in the HG corresponding to goal
+        if goalReached: #i.e., if we have created at least 1 node in the HG corresponding to goal
             print "SUCCESS; length: %d words, time taken: %.2f sec, sentence: %s"%(len(words), parseTime, line.strip())
             if "debug" in optsDict:
                 printHGDebug(hg, lineNum)
@@ -75,7 +74,7 @@ def main():
                 fh = gzip.open("%s/grammar.%d.gz"%(outDir, lineNum), 'w')
                 for key in marginals:
                     fh.write("%s ||| spectral=%.3f\n"%(key, math.log(marginals[key])))
-                fh.write("[S] ||| [S_0_%d] ||| [1] ||| 0\n"%len(words))
+                fh.write("[S] ||| [X_0_%d] ||| [1] ||| 0\n"%len(words)) #top level rule
                 fh.close()
         else:
             print "FAIL; length: %d words, time taken: %.2f sec"%(len(words), parseTime)
@@ -93,9 +92,10 @@ def printHGDebug(hg, line_num):
     print >> fh, "(Nodes/Edges): %d / %d"%(len(hg.nodes_), len(hg.edges_))
     for node in hg.nodes_: 
         print >> fh, "Node ID: %d"%(node.id)
-        LHS = node.cat[:-1] + ",%d-%d]"%(node.i, node.j)
+        LHS = node.cat[:-1] + "_%d_%d]"%(node.i, node.j)
         for inEdgeID in node.in_edges_:
-            print >> fh, "%s ||| %s"%(LHS, hg.edges_[inEdgeID].rule)
+            srcRuleDecorated = hg_io.decorateSrcRule(hg, inEdgeID)
+            print >> fh, "%s ||| %s"%(LHS, srcRuleDecorated)
     fh.close()
 
 '''
@@ -107,8 +107,9 @@ rules in a cell to the passive chart, or deal with NTs in active
 items just proved.  At the end, we look at the passive items in
 the cell corresponding to the sentence to see if [S] is there. 
 '''
-def parse(words, grammarTrie, goal_idx):
+def parse(words, grammarTrie):
     N = len(words)
+    goal_idx = False
     hg = HyperGraph()
     seedActiveChart(grammarTrie, N)
     for l in range(1, N+1): #length
@@ -119,18 +120,16 @@ def parse(words, grammarTrie, goal_idx):
             for activeItem in cell:
                 rules = activeItem.srcTrie.getRules()
                 #if we are at (0,N), then we should only apply rules that have 'S' as LHS; otherwise, we should only apply rules that have 'X' as LHS
-                rules = [rule for rule in rules if rule[0] == '[S]'] if (i == 0) and (j == N) else [rule for rule in rules if rule[0] == '[X]'] 
+                #rules = [rule for rule in rules if rule[0] == '[S]'] if (i == 0) and (j == N) else [rule for rule in rules if rule[0] == '[X]'] 
                 for rule in rules:
                     applyRule(i, j, rule, activeItem.tailNodeVec, hg)
             if j < N: #the below function includes NTs that were just proved into new binaries, which is unnecessary for the end token
                 extendActiveItems(i, i, j) #dealing with NTs that were just proved
         if (0,N) in passive: #we have spanned the entire input sentence
             passiveItems = passive[(0,N)] #list of indices
-            for idx in passiveItems:
-                node = hg.getIthNode(idx)
-                if node.cat == '[S]': #then goal state has been found
-                    goal_idx.append(node.id)
-    return hg
+            if len(passiveItems) > 0: #we have at least one node that covers the entire sentence
+                goal_idx = True
+    return (hg, goal_idx)
 
 '''
 Function called before the sentence is parsed;

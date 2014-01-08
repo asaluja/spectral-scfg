@@ -109,8 +109,9 @@ def printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipO
                 sentFile.write("[%s] ||| %s\n"%(nodeLabel, phrase_pair))
             else: #print Hiero grammar
                 if isLex and srcNTCounter < 3:
-                    nodeStr = "[S]" if nodeLabel == 0 else "[X]"
-                    sentFile.write("[%s] ||| %s\n"%(nodeStr, phrase_pair))
+                    nodeStr = "S" if nodeLabel == 0 else "X"
+                    #sentFile.write("[%s] ||| %s\n"%(nodeStr, phrase_pair))
+                    sentFile.write("[X] ||| %s\n"%(phrase_pair))
                 elif srcNTCounter > 2:
                     sys.stderr.write("Sentence %d:Rule '[X] ||| %s' has more than 2 NTs\n"%(count, phrase_pair))
     else: #printing to stdout
@@ -118,8 +119,9 @@ def printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipO
             print "[%s] ||| %s"%(nodeLabel, phrase_pair)
         else:
             if isLex and srcNTCounter < 3:
-                nodeStr = "S" if nodeLabel == 0 else "X"
-                print "[%s] ||| %s"%(nodeStr, phrase_pair)
+                nodeStr = "S" if nodeLabel == 0 else "X"                
+                #print "[%s] ||| %s"%(nodeStr, phrase_pair)
+                print "[X] ||| %s"%(phrase_pair)
             elif srcNTCounter > 2:
                 sys.stderr.write("Sentence %d:Rule '[X] ||| %s' has more than 2 NTs\n"%(count, phrase_pair))
 
@@ -151,7 +153,9 @@ def main():
         if (zipOut): #set up the output if need be
             sentLoc = dirLoc + "/grammar.%d.gz"%(count) #if we need to write out to zipped grammar, open file
             sentFile = gzip.open(sentLoc, 'wb')
-        extractRules(count, original, line.strip(), src, tgt, alignDict, NTLabel, zipOut, sentFile)
+        #phrase_pair = "[%d,1] ||| [%d,1]"%(NTLabel, NTLabel)
+        #printRule(count, 1, original, False, 0, phrase_pair, zipOut, sentFile)
+        extractRules(count, original, line.lstrip().rstrip(), src, tgt, alignDict, NTLabel, zipOut, sentFile)        
         count += 1
         if (zipOut):
             sentFile.close()        
