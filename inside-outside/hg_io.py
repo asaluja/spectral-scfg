@@ -144,7 +144,8 @@ def edgeMarginals(alpha, beta, hg, flipSign, paramDict, words):
         arity = checkArity(edge.rule)
         assert arity == len(tail)
         for target_rule in paramDict[key]:
-            src_tgt_decorated = "%s ||| %s"%(words[head.i], words[head.i]) if target_rule == "<unk>" else "%s ||| %s"%(src_decorated, decorateTgtRule(target_rule))
+            #src_tgt_decorated = "%s ||| %s"%(words[head.i], words[head.i]) if target_rule == "<unk>" else "%s ||| %s"%(src_decorated, decorateTgtRule(target_rule))
+            src_tgt_decorated = "<unk> ||| %s"%(words[head.i]) if target_rule == "<unk>" else "%s ||| %s"%(src_decorated, decorateTgtRule(target_rule))
             lhs_src_tgt = ' ||| '.join([LHS, src_tgt_decorated])
             marginal = 0
             if arity == 0:

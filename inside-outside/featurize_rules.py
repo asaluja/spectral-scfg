@@ -11,10 +11,11 @@ arg 2: location of files with full set of rules extracted from suffix array stru
 arg 3: location of output directory for featurized per-sentence grammars
 arg 4: number of partitions
 arg 5: this particular partition number
-Usage: python featurize_rules.py minRules-dir fullRules-dir output-dir numPartitions partitionNum
+Usage: python featurize_rules.py minrules-dir fullrules-dir output-dir numPartitions partitionNum
 '''
 
 import sys, commands, string, gzip, os, re
+import multiprocessing as mp
 
 def process_hiero_rules(filehandle):
     hiero_rules = {}
@@ -50,59 +51,65 @@ def removeSpanInfo(elements):
             tgtRHSArr.append("[X," + item[1:])
         else:
             tgtRHSArr.append(item)
-    srcRHS = ' '.join(srcRHSArr)
+    srcRHS = ' '.join(srcRHSArr)    
     tgtRHS = ' '.join(tgtRHSArr) 
+    if srcRHS == "<unk>": #OOV
+        srcRHS = tgtRHS #tgtRHS has the source word, we passed this through in hg_io.py
     return (' ||| '.join([LHS, srcRHS, tgtRHS]), noLex)
+
+def decorateSentenceGrammar(minrule_file, hiero_file, out_file, featureStr):
+    hiero_fh = gzip.open(hiero_file, 'rb')
+    hiero_rules = process_hiero_rules(hiero_fh)
+    out_fh = gzip.open(out_file, 'w')
+    if os.path.isfile(minrule_file):
+        minrule_fh = gzip.open(minrule_file, 'rb')
+        numRulesInHiero = 0
+        numRulesTotal = 0
+        for rule in minrule_fh:
+            numRulesTotal += 1
+            elements = rule.strip().split(' ||| ')
+            key, noLex = removeSpanInfo(elements[:3])
+            if key in hiero_rules:
+                numRulesInHiero += 1
+            ruleToPrint = rule.strip()
+            if elements[1] == "<unk>": #src is OOV
+                ruleToPrint = "%s ||| %s ||| %s ||| %s OOV=1"%(elements[0], elements[2], elements[2], elements[3])
+            line_out = ruleToPrint + " DeletionRule=0.0 " + hiero_rules[key] if key in hiero_rules else ruleToPrint + " DeletionRule=1.0 " + featureStr
+            if noLex: 
+                assert key not in hiero_rules #if not lexical, key should never be in hiero rules
+                line_out += " Glue=1.0"
+                ntNumbers = [int(ntIdx) for ntIdx in re.findall(r'\[([^]]*)\]', elements[2])]
+                if len(ntNumbers) == 2 and (ntNumbers[0] > ntNumbers[1]):                        
+                    line_out += "Inverse=1"
+            if elements[0] == '[S]':
+                out_fh.write("%s ||| 0\n"%(' ||| '.join(elements[:3])))
+            else:
+                out_fh.write("%s\n"%line_out)
+        minrule_fh.close()
+        print "for minrule file %s, out of %d rules, %d are also in hiero"%(minrule_file, numRulesTotal, numRulesInHiero)
+    else:
+        print "could not find minrule grammar for sentence number %d, taking hiero grammar instead"%(sentNum)
+        for key in hiero_rules:
+            out_fh.write("%s ||| spectral=0.0 DeletionRule=0.0 %s\n"%(key, hiero_rules[key]))
+    hiero_fh.close()
+    out_fh.close()
+        
 
 def main():
     args = sys.argv[1:]
-    minRule_grammars_loc = args[0]
+    minrule_grammars_loc = args[0]
     hiero_grammars_loc = args[1]
-    outDir_loc = args[2]
-    numPartitions = int(args[3])
-    partition = int(args[4])
-    hiero_grammars = os.listdir(hiero_grammars_loc)            
-    numSentences = len(hiero_grammars)
-    sentencesPerChunk = numSentences/numPartitions
-    start = partition*sentencesPerChunk
-    end = (partition+1)*sentencesPerChunk if partition < numPartitions - 1 else numSentences
+    outDir_loc = args[2]    
+    numProcesses = int(args[3])
+    minrule_grammars = os.listdir(minrule_grammars_loc)
+    hiero_grammars = os.listdir(hiero_grammars_loc)
     features = extractFeatureList(hiero_grammars_loc + hiero_grammars[0])
     featureStr = ' '.join(["%s=0.0"%(feature) for feature in features])
-    for sentNum in range(start,end):
-        hiero_fh = gzip.open(hiero_grammars_loc + "grammar.%d.gz"%sentNum, 'rb')
-        hiero_rules = process_hiero_rules(hiero_fh)
-        out_fh = gzip.open("%s/grammar.%d.gz"%(outDir_loc, sentNum), 'w')
-        fileName = minRule_grammars_loc + "grammar.%d.gz"%sentNum
-        if os.path.isfile(fileName):
-            minrule_fh = gzip.open(fileName, 'rb')
-            numRulesInHiero = 0
-            numRulesTotal = 0
-            for rule in minrule_fh:
-                numRulesTotal += 1
-                elements = rule.strip().split(' ||| ')
-                key, noLex = removeSpanInfo(elements[:3])
-                if key in hiero_rules:
-                    numRulesInHiero += 1
-                line_out = rule.strip() + " DeletionRule=0.0 " + hiero_rules[key] if key in hiero_rules else rule.strip() + " DeletionRule=1.0 " + featureStr
-                if noLex: 
-                    assert key not in hiero_rules #if not lexical, key should never be in hiero rules
-                    line_out += " Glue=1.0"
-                    ntNumbers = [int(ntIdx) for ntIdx in re.findall(r'\[([^]]*)\]', elements[2])]
-                    if len(ntNumbers) == 2:                        
-                        if ntNumbers[0] > ntNumbers[1]:
-                            line_out += " Inverse=1"
-                if elements[0] == '[S]': #top level rule, overwrite
-                    out_fh.write("%s ||| 0\n"%(' ||| '.join(elements[:3])))
-                else:
-                    out_fh.write("%s\n"%line_out)
-            minrule_fh.close()
-            print "for sentence number %d, out of %d rules, %d are also in hiero"%(sentNum, numRulesTotal, numRulesInHiero)
-        else:
-            print "could not find minrule grammar for sentence number %d, taking hiero grammar instead"%(sentNum)
-            for key in hiero_rules:
-                out_fh.write("%s ||| spectral=0.0 DeletionRule=0.0 %s\n"%(key, hiero_rules[key]))
-        out_fh.close()
-        hiero_fh.close()
+    pool = mp.Pool(numProcesses)
+    for minrule_file in minrule_grammars:
+        pool.apply_async(decorateSentenceGrammar, (minrule_grammars_loc + minrule_file, hiero_grammars_loc + minrule_file, outDir_loc + minrule_file, featureStr))
+    pool.close()
+    pool.join()
 
 if __name__ == "__main__":
     main()

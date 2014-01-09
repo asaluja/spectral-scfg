@@ -34,9 +34,8 @@ def extractFeatureList(gzfile):
     return features_list
 
 def filterRules(countDict, limit):
-    #first, need to reprocess countDict
     srcTgtDict = {}
-    for key in countDict.keys():
+    for key in countDict.keys(): #first, need to reprocess countDict
         elements = key.split(' ||| ')
         srcKey = ' ||| '.join(elements[:2])
         tgtKey = elements[2]
