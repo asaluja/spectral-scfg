@@ -73,8 +73,8 @@ def decorateSentenceGrammar(minrule_file, hiero_file, out_file, featureStr):
                 numRulesInHiero += 1
             ruleToPrint = rule.strip()
             if elements[1] == "<unk>": #src is OOV
-                #ruleToPrint = "%s ||| %s ||| %s ||| %s OOV=1"%(elements[0], elements[2], elements[2], elements[3])
-                ruleToPrint = "%s ||| %s ||| %s ||| %s"%(elements[0], elements[2], elements[2], elements[3])
+                ruleToPrint = "%s ||| %s ||| %s ||| %s PassThrough=1"%(elements[0], elements[2], elements[2], elements[3])
+                #ruleToPrint = "%s ||| %s ||| %s ||| %s"%(elements[0], elements[2], elements[2], elements[3])
             line_out = ruleToPrint + " DeletionRule=0.0 " + hiero_rules[key] if key in hiero_rules else ruleToPrint + " DeletionRule=1.0 " + featureStr
             if noLex: 
                 assert key not in hiero_rules #if not lexical, key should never be in hiero rules

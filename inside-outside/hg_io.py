@@ -120,7 +120,7 @@ def nodeMarginals(alpha, beta, hg, flipSign, words):
             key = ' ||| '.join([node.cat, hg.edges_[inEdgeID].rule])
             src_decorated = decorateSrcRule(hg, inEdgeID)
             for target_rule in paramDict[key]:
-                src_tgt_decorated = "%s ||| %s"%(words[node.i], words[node.i]) if target_rule == "<unk>" else "%s ||| %s"%(src_decorated, decorateTgtRule(target_rule))
+                src_tgt_decorated = "<unk> ||| %s"%(words[node.i]) if target_rule == "<unk>" else "%s ||| %s"(src_decorated, decorateTgtRule(target_rule))
                 lhs_src_tgt = ' ||| '.join([LHS, src_tgt_decorated])
                 marginals[lhs_src_tgt] = marginal #associate the marginal to each rule
     return marginals
