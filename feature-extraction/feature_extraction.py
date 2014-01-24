@@ -68,13 +68,16 @@ def main():
         computeOOVProbMass(inFeatures)
     in_fm = convertToSpMat(inFeatures, len(inFeatIDs), kappa) #convert to SpMat also does the feature scaling
     out_fm = convertToSpMat(outFeatures, len(outFeatIDs), kappa)
-    Y,Z = SVDandProjection(in_fm, out_fm, rank, True) #compute avg outer product, call Matlab to do SVD, extract Y and Z matrices
+    Y,Z = SVDandProjection(in_fm, out_fm, rank) #compute avg outer product, call Matlab to do SVD, extract Y and Z matrices
     sys.stderr.write("SVD and projections complete\n")    
     paramDict, countDict = computeCorrelations(Y,Z) #compute tensors, matrices, and vectors
     paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
     sys.stderr.write("Parameter estimation complete\n")
+    #for key in paramDict:
+    #    print key
+    #    print paramDict[key]
     if "filterRules" in featBinDict:
-        filterRulesByCount(countDict, paramDict, featBinDict["filterRules"])
+        filterRulesByCount(countDict, paramDict, featBinDict["filterRules"])        
     cPickle.dump(paramDict, open(args[3], "wb")) #write out in cPickle format for I/O algorithm
     featNameHandle = open(featname_out_loc, 'w')
     for feature in inFeatIDs: #write out feature names and IDs
@@ -120,9 +123,9 @@ the average outer product of the features, then interfaces with matlab
 to compute the SVD, and then returns lower-dimensional projections of
 the feature matrices. 
 '''
-def SVDandProjection(inFeatMat, outFeatMat, rank, matlab):
+def SVDandProjection(inFeatMat, outFeatMat, rank):
     avgOP = (1.0 / inFeatMat.shape[0]) * (inFeatMat.transpose() * outFeatMat)
-    U, S, V = matlabInterface(avgOP, rank) if matlab else la.svd(avgOP, full_matrices=False)    
+    U, S, V = matlabInterface(avgOP, rank)
     Y = inFeatMat * U #inFeatMat is a sparse matrix, so * is overloaded to represent matrix mult!!
     Z = outFeatMat.dot(V).dot(np.linalg.inv(S))
     return (Y, Z)

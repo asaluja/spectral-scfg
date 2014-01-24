@@ -161,7 +161,7 @@ def edgeMarginals(alpha, beta, hg, flipSign, paramDict, words):
                 if flipSign:
                     marginal = -marginal
                 else:
-                    sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g\n"%(head.i, head.j, marginal))
+                    sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g; try using '-f' flag to flip sign\n"%(head.i, head.j, marginal))
             if marginal > 0:
                 marginals[lhs_src_tgt] = marginal
     return marginals

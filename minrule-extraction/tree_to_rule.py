@@ -16,7 +16,7 @@ stdout: list of rules
 option/flag 1: -d --> debug, prints out full output (if flag off, prints out Hiero output)
 option/flag 2: -z --> print out to .gz file: need to provide directory where grammars are written, e.g.:
 -z/usr0/home/avneesh/spectral-scfg/data
-#Author: Avneesh Saluja (avneesh@cs.cmu.edu)
+Author: Avneesh Saluja (avneesh@cs.cmu.edu)
 '''
 
 import os, sys, commands, string, collections, re, getopt, gzip
@@ -97,6 +97,7 @@ def extractRules(count, original, tree, src, tgt, alignDict, nodeLabel, zipOut, 
     phrase_pair = "%s ||| %s"%(srcStr, tgtStr)
     printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipOut, sentFile)
     for child in children: #recursively do the same for children
+
         extractRules(count, original, child[0], src, tgt, alignDict, child[1], zipOut, sentFile)
 
 def printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipOut, sentFile=None):
@@ -110,7 +111,6 @@ def printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipO
             else: #print Hiero grammar
                 if isLex and srcNTCounter < 3:
                     nodeStr = "S" if nodeLabel == 0 else "X"
-                    #sentFile.write("[%s] ||| %s\n"%(nodeStr, phrase_pair))
                     sentFile.write("[X] ||| %s\n"%(phrase_pair))
                 elif srcNTCounter > 2:
                     sys.stderr.write("Sentence %d:Rule '[X] ||| %s' has more than 2 NTs\n"%(count, phrase_pair))
@@ -120,7 +120,6 @@ def printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipO
         else:
             if isLex and srcNTCounter < 3:
                 nodeStr = "S" if nodeLabel == 0 else "X"                
-                #print "[%s] ||| %s"%(nodeStr, phrase_pair)
                 print "[X] ||| %s"%(phrase_pair)
             elif srcNTCounter > 2:
                 sys.stderr.write("Sentence %d:Rule '[X] ||| %s' has more than 2 NTs\n"%(count, phrase_pair))
@@ -153,8 +152,6 @@ def main():
         if (zipOut): #set up the output if need be
             sentLoc = dirLoc + "/grammar.%d.gz"%(count) #if we need to write out to zipped grammar, open file
             sentFile = gzip.open(sentLoc, 'wb')
-        #phrase_pair = "[%d,1] ||| [%d,1]"%(NTLabel, NTLabel)
-        #printRule(count, 1, original, False, 0, phrase_pair, zipOut, sentFile)
         extractRules(count, original, line.lstrip().rstrip(), src, tgt, alignDict, NTLabel, zipOut, sentFile)        
         count += 1
         if (zipOut):
