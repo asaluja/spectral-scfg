@@ -62,7 +62,7 @@ def main():
         sync_tree = tree(0, None, None, minrule_fh) #use tree class to generate the tree using the minimal grammar for this sentence                        
         root_rules.append(update_features(sync_tree, inFeatures, outFeatures, featBinDict))
     sys.stderr.write("Feature extraction complete\n")
-    kappa = 5.0
+    kappa = 1.0
     rank = int(args[2])
     if "OOV" in featBinDict:
         computeOOVProbMass(inFeatures)
@@ -188,6 +188,7 @@ def computeCorrelations(Y, Z):
         arity = len(exampleIDs[rule][0].split())
         scale = 1.0 / numExamples
         outerProd = None
+        print rule
         if arity == 3: #compute tensor
             outerProd = np.zeros(shape=(rank, rank, rank))
             for ins_out_pair in exampleIDs[rule]:
@@ -202,12 +203,12 @@ def computeCorrelations(Y, Z):
                 outerProd += np.outer(Z[out_idx,:], Y[in_idx,:])
         elif arity == 1:
             outerProd = np.zeros(shape=(rank))
-            for ins_out_pair in exampleIDs[rule]:
+            for ins_out_pair in exampleIDs[rule]:                
                 out_idx = int(re.findall("Out:(\d+)", ins_out_pair)[0])
                 outerProd += Z[out_idx,:]
         else:
             sys.stderr.write("Rule has more than 2 inside trees or more than 1 outside tree!\n%s\n"%rule)
-        outerProd = np.multiply(outerProd, scale) #scale by MLE count
+        outerProd = np.multiply(outerProd, scale) #scale by MLE count        
         elements = rule.split(' ||| ')
         src_key = ' ||| '.join(elements[:-1])
         tgt_key = elements[-1]
@@ -249,7 +250,13 @@ def convertToSpMat(rawFeatMat, numFeatures, kappa):
         vals.extend(val)    
     sparseFeat = sp.csc_matrix((vals, (rows, cols)), shape=(len(rawFeatMat), numFeatures))
     scaledFeat = rescaleFeatures(sparseFeat, kappa)
+    #scaledFeat = centerFeatures(sparseFeat)
+    #scaledFeat = sparseFeat    
     return scaledFeat
+
+def centerFeatures(sparseFeat):
+    meanShift = sparseFeat - (sparseFeat.sum(axis=0) * (1.0 / sparseFeat.shape[0]))
+    return meanShift
 
 '''
 this function rescales the features based on the variance of 

@@ -164,6 +164,7 @@ def edgeMarginals(alpha, beta, hg, flipSign, paramDict, words):
                     sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g; try using '-f' flag to flip sign\n"%(head.i, head.j, marginal))
             if marginal > 0:
                 marginals[lhs_src_tgt] = marginal
+                print "%s : %.5g"%(lhs_src_tgt, marginal)
     return marginals
                 
 def insideOutside(hg, paramDict, rank, words, flipSign, nodeMarginal):

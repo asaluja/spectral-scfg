@@ -40,6 +40,7 @@ params_fh = open(args[0], 'rb')
 paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
 grammar_rules = [rule for rule in paramDict.keys() if rule != "Pi"] #Pi contains the start of sentence params
 grammarTrie = trie(grammar_rules) 
+#grammarTrie.traverseTrie(0)
 rank = int(args[1])
 inputFile = open(args[2], 'r').readlines()
 numProcesses = int(args[3])
@@ -94,6 +95,7 @@ def parse(words, outFile, lineNum):
             passiveItems = passive[(0,N)] #list of indices
             if len(passiveItems) > 0: #we have at least one node that covers the entire sentence
                 goal_idx = True
+                
     parseTime = time.clock() - start
     if goal_idx: #i.e., if we have created at least 1 node in the HG corresponding to goal        
         print "SUCCESS; length: %d words, time taken: %.2f sec, sentence: %s"%(len(words), parseTime, ' '.join(words))
