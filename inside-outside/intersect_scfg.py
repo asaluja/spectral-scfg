@@ -40,7 +40,6 @@ params_fh = open(args[0], 'rb')
 paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
 grammar_rules = [rule for rule in paramDict.keys() if rule != "Pi"] #Pi contains the start of sentence params
 grammarTrie = trie(grammar_rules) 
-#grammarTrie.traverseTrie(0)
 rank = int(args[1])
 inputFile = open(args[2], 'r').readlines()
 numProcesses = int(args[3])

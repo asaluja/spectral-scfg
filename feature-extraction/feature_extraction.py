@@ -62,7 +62,7 @@ def main():
         sync_tree = tree(0, None, None, minrule_fh) #use tree class to generate the tree using the minimal grammar for this sentence                        
         root_rules.append(update_features(sync_tree, inFeatures, outFeatures, featBinDict))
     sys.stderr.write("Feature extraction complete\n")
-    kappa = 1.0
+    kappa = 5.0
     rank = int(args[2])
     if "OOV" in featBinDict:
         computeOOVProbMass(inFeatures)
@@ -126,6 +126,8 @@ the feature matrices.
 def SVDandProjection(inFeatMat, outFeatMat, rank):
     avgOP = (1.0 / inFeatMat.shape[0]) * (inFeatMat.transpose() * outFeatMat)
     U, S, V = matlabInterface(avgOP, rank)
+    print "Singular values are: "
+    print S.diagonal()
     Y = inFeatMat * U #inFeatMat is a sparse matrix, so * is overloaded to represent matrix mult!!
     Z = outFeatMat.dot(V).dot(np.linalg.inv(S))
     return (Y, Z)
@@ -188,7 +190,6 @@ def computeCorrelations(Y, Z):
         arity = len(exampleIDs[rule][0].split())
         scale = 1.0 / numExamples
         outerProd = None
-        print rule
         if arity == 3: #compute tensor
             outerProd = np.zeros(shape=(rank, rank, rank))
             for ins_out_pair in exampleIDs[rule]:

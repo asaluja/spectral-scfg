@@ -16,16 +16,9 @@ def main():
         sentFile = gzip.open(dirOut + "/grammar.%d.gz"%(count), 'wb')
         elements = line.strip().split(' ||| ')
         if elements[0] == 'b':
-            sentFile.write("[0] ||| [1,1] ||| [1,1]\n")
-            #sentFile.write("[0] ||| [1,1] [2,2] ||| [1,1] [2,2]\n")
-            sentFile.write("[1] ||| b ||| BB\n")
-            #sentFile.write("[2] ||| . ||| .\n")
+            sentFile.write("[0] ||| b ||| BB\n")
         else:
             sentFile.write("[0] ||| [1,1] [2,2] ||| [1,1] [2,2]\n")
-            #sentFile.write("[1] ||| [3,1] [4,2] ||| [3,1] [4,2]\n")
-            #sentFile.write("[3] ||| a ||| A\n")
-            #sentFile.write("[4] ||| b ||| B\n")
-            #sentFile.write("[2] ||| . ||| .\n")
             sentFile.write("[1] ||| a ||| A\n")
             sentFile.write("[2] ||| b ||| B\n")
         sentFile.close()
