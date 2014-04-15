@@ -26,8 +26,8 @@ def checkArity(rule):
 
 def computeInside(hg, paramDict, rank):
     alphaDict = {}
-    for node in hg.nodes_: #nodes are added in topological order, so hg.nodes_ is guaranteed to be sorted
-        aggregate = np.zeros((rank))
+    for node in hg.nodes_: #nodes are added in topological order, so hg.nodes_ is guaranteed to be sorted        
+        aggregate = 0 if rank == 0 else np.zeros((rank))
         for inEdgeID in node.in_edges_: #for each incoming hyperedge (i.e., rule that fits the span)
             src_rule = hg.edges_[inEdgeID].rule #src RHS string
             tail = hg.edges_[inEdgeID].tailNodes
@@ -39,12 +39,19 @@ def computeInside(hg, paramDict, rank):
                 if arity == 0: #pre-terminal
                     aggregate += srcDict[target_rule]
                 elif arity == 1:
-                    aggregate += srcDict[target_rule].dot(alphaDict[tail[0]])
+                    if rank == 0:
+                        aggregate += srcDict[target_rule] * alphaDict[tail[0]]
+                    else:
+                        aggregate += srcDict[target_rule].dot(alphaDict[tail[0]])
                 elif arity == 2: #this part of the code seems to take some time
                     x1_alpha = alphaDict[tail[0]]
                     x2_alpha = alphaDict[tail[1]]
-                    result = np.tensordot(srcDict[target_rule], x2_alpha, axes=([2], [0]))
-                    result = np.tensordot(result, x1_alpha, axes=([1], [0]))
+                    result = 0
+                    if rank == 0:
+                        result = srcDict[target_rule] * x1_alpha * x2_alpha
+                    else:
+                        result = np.tensordot(srcDict[target_rule], x2_alpha, axes=([2], [0]))
+                        result = np.tensordot(result, x1_alpha, axes=([1], [0]))
                     aggregate += result
                 else:
                     sys.stderr.write("Arity > 2! Cannot compute alpha terms\n")
@@ -54,8 +61,8 @@ def computeInside(hg, paramDict, rank):
 def computeOutside(hg, paramDict, rank, alphaDict):
     betaDict = {}
     for key in alphaDict: #initialize the beta terms to 0
-        betaDict[key] = np.zeros((rank))
-    betaDict[hg.nodes_[-1].id] = paramDict["Pi"] #initialization
+        betaDict[key] = 0 if rank == 0 else np.zeros((rank))
+    betaDict[hg.nodes_[-1].id] = 1.0 if rank == 0 else paramDict["Pi"]
     for q_node in reversed(hg.nodes_): #iterate through nodes in reverse topological order
         x_beta = betaDict[q_node.id]
         for inEdgeID in q_node.in_edges_: #for each incoming hyperedge
@@ -67,13 +74,21 @@ def computeOutside(hg, paramDict, rank, alphaDict):
             srcDict = paramDict[key]
             for target_rule in srcDict: #for each rule where src RHS == hyper edge src RHS
                 if arity == 1: #then just add the result to tailnode
-                    betaDict[tail[0]] += x_beta.dot(srcDict[target_rule])
+                    if rank == 0:
+                        betaDict[tail[0]] += x_beta * srcDict[target_rule]
+                    else:
+                        betaDict[tail[0]] += x_beta.dot(srcDict[target_rule])
                 elif arity == 2:
-                    result = np.tensordot(srcDict[target_rule], x_beta, axes=([0], [0])) #because we are defining axis, order of param and x_beta doesn't matter
-                    x_alpha_right = alphaDict[tail[1]]
-                    betaDict[tail[0]] += np.tensordot(result, x_alpha_right, axes=([1], [0]))
-                    x_alpha_left = alphaDict[tail[0]]
-                    betaDict[tail[1]] += np.tensordot(result, x_alpha_left, axes=([0], [0]))                
+                    if rank == 0:
+                        result = srcDict[target_rule] * x_beta
+                        betaDict[tail[0]] += result * alphaDict[tail[1]] #multiply by x_alpha_right
+                        betaDict[tail[1]] += result * alphaDict[tail[0]]
+                    else:
+                        result = np.tensordot(srcDict[target_rule], x_beta, axes=([0], [0])) #because we are defining axis, order of param and x_beta doesn't matter
+                        x_alpha_right = alphaDict[tail[1]]
+                        betaDict[tail[0]] += np.tensordot(result, x_alpha_right, axes=([1], [0]))
+                        x_alpha_left = alphaDict[tail[0]]
+                        betaDict[tail[1]] += np.tensordot(result, x_alpha_left, axes=([0], [0]))                
     return betaDict
 
 def decorateSrcRule(hg, inEdgeID):
@@ -104,6 +119,7 @@ def decorateTgtRule(rule):
 '''
 in nodeMarginals, the marginal is associated with an NT span. 
 This corresponds exactly to a node. 
+NOTE: need to update for mle estimates
 '''
 def nodeMarginals(alpha, beta, hg, flipSign, words):
     marginals = {}
@@ -132,7 +148,7 @@ of the head node and the alpha vectors of the tail nodes, and
 multiply them through the parameter associated with the rule to
 get the edge marginal.  
 '''
-def edgeMarginals(alpha, beta, hg, flipSign, paramDict, words):
+def edgeMarginals(alpha, beta, hg, flipSign, rank, paramDict, words):
     marginals = {}
     for edge in hg.edges_:
         head = hg.nodes_[edge.headNode]
@@ -149,12 +165,15 @@ def edgeMarginals(alpha, beta, hg, flipSign, paramDict, words):
             lhs_src_tgt = ' ||| '.join([LHS, src_tgt_decorated])
             marginal = 0
             if arity == 0:
-                marginal = beta_head.dot(paramDict[key][target_rule])
+                marginal = beta_head * paramDict[key][target_rule] if rank == 0 else beta_head.dot(paramDict[key][target_rule])
             elif arity == 1:
-                marginal = beta_head.dot(paramDict[key][target_rule]).dot(alpha[tail[0]])
+                marginal = beta_head * paramDict[key][target_rule] * alpha[tail[0]] if rank == 0 else beta_head.dot(paramDict[key][target_rule]).dot(alpha[tail[0]])
             elif arity == 2:
-                result = np.tensordot(paramDict[key][target_rule], beta_head, axes=([0], [0])) 
-                marginal = alpha[tail[0]].dot(result).dot(alpha[tail[1]])
+                if rank == 0:
+                    marginal = paramDict[key][target_rule] * beta_head * alpha[tail[0]] * alpha[tail[1]]
+                else:
+                    result = np.tensordot(paramDict[key][target_rule], beta_head, axes=([0], [0])) 
+                    marginal = alpha[tail[0]].dot(result).dot(alpha[tail[1]])
             else:
                 sys.stderr.write("Arity > 2! Cannot compute marginals for rule %s\n"%lhs_src_tgt)
             if marginal < 0:
@@ -169,7 +188,7 @@ def edgeMarginals(alpha, beta, hg, flipSign, paramDict, words):
 def insideOutside(hg, paramDict, rank, words, flipSign, nodeMarginal):
     alpha = computeInside(hg, paramDict, rank)    #paramDict keys are 'LHS ||| src_RHS' format
     beta = computeOutside(hg, paramDict, rank, alpha)
-    marginals = nodeMarginals(alpha, beta, hg, flipSign, words) if nodeMarginal else edgeMarginals(alpha, beta, hg, flipSign, paramDict, words)
+    marginals = nodeMarginals(alpha, beta, hg, flipSign, words) if nodeMarginal else edgeMarginals(alpha, beta, hg, flipSign, rank, paramDict, words)
     return marginals #key of marginals is a decorated entire rule LHS ||| src RHS ||| tgt RHS
     
 

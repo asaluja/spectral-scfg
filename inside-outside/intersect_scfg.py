@@ -26,7 +26,7 @@ import sys, commands, string, time, gzip, cPickle, re, getopt, math, hg_io
 import multiprocessing as mp
 from trie import trie, ActiveItem, HyperGraph
 
-(opts, args) = getopt.getopt(sys.argv[1:], 'dnf')
+(opts, args) = getopt.getopt(sys.argv[1:], 'dnfms')
 optsDict = {}
 for opt in opts:
     if opt[0] == '-d': #print info about each node in the hypergraph 
@@ -35,6 +35,10 @@ for opt in opts:
         optsDict["nodeMarginal"] = 1
     elif opt[0] == '-f': #if marginal is < 0, we flip the sign
         optsDict["flipSign"] = 1
+    elif opt[0] == '-m': #MLE 
+        optsDict["MLE"] = 1
+    elif opt[0] == '-s': 
+        optsDict["sourceNorm"] = 1
 
 params_fh = open(args[0], 'rb')
 paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
@@ -93,8 +97,7 @@ def parse(words, outFile, lineNum):
         if (0,N) in passive: #we have spanned the entire input sentence
             passiveItems = passive[(0,N)] #list of indices
             if len(passiveItems) > 0: #we have at least one node that covers the entire sentence
-                goal_idx = True
-                
+                goal_idx = True                
     parseTime = time.clock() - start
     if goal_idx: #i.e., if we have created at least 1 node in the HG corresponding to goal        
         print "SUCCESS; length: %d words, time taken: %.2f sec, sentence: %s"%(len(words), parseTime, ' '.join(words))
@@ -110,15 +113,38 @@ def parse(words, outFile, lineNum):
 def computeMarginals(hg, words, outFile):
     flipSign = "flipSign" in optsDict
     nodeMarginal = "nodeMarginal" in optsDict
+    sourceNorm = "sourceNorm" in optsDict
+    MLE = "MLE" in optsDict
+    rankToUse = 0 if MLE else rank
     start = time.clock()
-    marginals = hg_io.insideOutside(hg, paramDict, rank, words, flipSign, nodeMarginal)
+    marginals = hg_io.insideOutside(hg, paramDict, rankToUse, words, flipSign, nodeMarginal)
     ioTime = time.clock() - start
     print "marginals computed over hypergraph. time taken: %.2f sec"%(ioTime)
+    if sourceNorm:
+        marginals = normalizeMarginalsBySource(marginals)        
     fh = gzip.open(outFile, 'w')
     for key in marginals:
         fh.write("%s ||| spectral=%.3f\n"%(key, math.log(marginals[key])))
     fh.write("[S] ||| [X_0_%d] ||| [1] ||| 0\n"%len(words)) #top level rule
     fh.close()
+
+def normalizeMarginalsBySource(margDict):
+    sortMargDict = {}
+    for key in margDict:
+        elements = key.split(' ||| ')
+        source = ' ||| '.join([elements[0], elements[1]])
+        tgt_marginal = (elements[2], margDict[key])
+        if source in sortMargDict:
+            sortMargDict[source].append(tgt_marginal)
+        else:
+            sortMargDict[source] = [tgt_marginal]
+    normMargDict = {}
+    for key in sortMargDict:
+        normalizer = sum([tgt_marginal[1] for tgt_marginal in sortMargDict[key]])
+        for tgt_marginal in sortMargDict[key]:
+            format_key = "%s ||| %s"%(key, tgt_marginal[0])
+            normMargDict[format_key] = tgt_marginal[1]/normalizer
+    return normMargDict
 
 '''
 hypergraph print function for debugging purposes

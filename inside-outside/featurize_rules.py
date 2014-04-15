@@ -81,7 +81,7 @@ def decorateSentenceGrammar(minrule_file, hiero_file, out_file, featureStr):
                 line_out += " Glue=1.0"
                 ntNumbers = [int(ntIdx) for ntIdx in re.findall(r'\[([^]]*)\]', elements[2])]
                 if len(ntNumbers) == 2 and (ntNumbers[0] > ntNumbers[1]):                        
-                    line_out += "Inverse=1"
+                    line_out += " Inverse=1.0"
             if elements[0] == '[S]':
                 out_fh.write("%s ||| 0\n"%(' ||| '.join(elements[:3])))
             else:

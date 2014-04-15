@@ -1,5 +1,4 @@
 #!/usr/bin/python -tt
-
 '''
 File: feature_extraction.py
 Author: Avneesh Saluja (avneesh@cs.cmu.edu)
@@ -36,7 +35,7 @@ outFeatIDs = {} #same as inFeatIDs
 outFeatID = 0
 def main():
     featBinDict = {}
-    (opts, args) = getopt.getopt(sys.argv[1:], 'ac:f:lor:')
+    (opts, args) = getopt.getopt(sys.argv[1:], 'ac:f:lmor:')
     for opt in opts:
         if opt[0] == '-a': #arity feature
             featBinDict["arityF"] = 1
@@ -47,6 +46,8 @@ def main():
             featBinDict["filterRules"] = int(opt[1])
         elif opt[0] == '-l': #lexical features
             featBinDict["lexF"] = 1
+        elif opt[0] == '-m': #ML estimate
+            featBinDict["MLE"] = 1
         elif opt[0] == '-o': #OOV
             featBinDict["OOV"] = 1
         elif opt[0] == '-r': #real-valued features
@@ -73,18 +74,19 @@ def main():
     paramDict, countDict = computeCorrelations(Y,Z) #compute tensors, matrices, and vectors
     paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
     sys.stderr.write("Parameter estimation complete\n")
-    #for key in paramDict:
-    #    print key
-    #    print paramDict[key]
     if "filterRules" in featBinDict:
         filterRulesByCount(countDict, paramDict, featBinDict["filterRules"])        
-    cPickle.dump(paramDict, open(args[3], "wb")) #write out in cPickle format for I/O algorithm
-    featNameHandle = open(featname_out_loc, 'w')
-    for feature in inFeatIDs: #write out feature names and IDs
-        print >> featNameHandle, "INSIDE %s:%d"%(feature, inFeatIDs[feature])
-    for feature in outFeatIDs:
-        print >> featNameHandle, "OUTSIDE %s:%d"%(feature, outFeatIDs[feature])
-    featNameHandle.close()        
+    if "MLE" in featBinDict: #if we are just dealing with MLE estimates, then write them out directly
+        normalizeCountDict(countDict)
+        cPickle.dump(countDict, open(args[3], "wb"))
+    else:
+        cPickle.dump(paramDict, open(args[3], "wb")) #write out in cPickle format for I/O algorithm
+        featNameHandle = open(featname_out_loc, 'w')
+        for feature in inFeatIDs: #write out feature names and IDs
+            print >> featNameHandle, "INSIDE %s:%d"%(feature, inFeatIDs[feature])
+        for feature in outFeatIDs:
+            print >> featNameHandle, "OUTSIDE %s:%d"%(feature, outFeatIDs[feature])
+        featNameHandle.close()        
 
 '''
 for debugging purposes
@@ -159,6 +161,7 @@ def filterRulesByCount(countDict, paramDict, limit):
             rules_to_filter = sorted_tgtRules[limit:]            
             for rule in rules_to_filter:
                 paramDict[src_rule].pop(rule) #remove it from the parameter srcDict
+                countDict[src_rule].pop(rule) #remove it from the count srcDict
             if len(rules_to_filter) > 0:
                 sys.stderr.write("Source RHS: %s; out of %d rules, filtered %d\n"%(src_rule, len(countDict[src_rule]), len(rules_to_filter)))
 
@@ -220,6 +223,22 @@ def computeCorrelations(Y, Z):
         paramDict[src_key] = srcDict
         countDict[src_key] = srcCountDict
     return (paramDict, countDict)
+
+'''
+Function description here
+'''
+def normalizeCountDict(countDict):
+    normalizer = 0
+    for srcKey in countDict:
+        #normalizer = sum([countDict[srcKey][tgtKey] for tgtKey in countDict[srcKey]])
+        normalizer += sum([countDict[srcKey][tgtKey] for tgtKey in countDict[srcKey]])
+    for srcKey in countDict: 
+        for tgtKey in countDict[srcKey]:
+            countDict[srcKey][tgtKey] /= float(normalizer)
+        print "Source key: %s"%(srcKey)
+        print "Target distribution: "
+        print countDict[srcKey]
+    return countDict
 
 '''
 function to compute generalized outer product (tensor product)
@@ -336,6 +355,8 @@ def update_features(sent_tree, inFeat, outFeat, featBinDict):
         outFeat.append(outFeatDict)
         curID = exampleID
         exampleID += 1
+    else:
+        sys.stderr.write("Rule %s' has more than 2 NTs, filtered out from parameter estimation\n"%(sent_tree.rule))
     exIDs = []
     for child in sent_tree.children: #at this stage, recurse on children
         childID = update_features(child, inFeat, outFeat, featBinDict)
@@ -399,7 +420,7 @@ def addYieldFeatures(srcYield, tgtYield, featDict, isLeft, inOrOut):
         featDict[addCheckFeature("srcYieldRightLast_%s"%srcYield[-1], inOrOut)] = 1
         featDict[addCheckFeature("tgtYieldRightFirst_%s"%tgtYield[0], inOrOut)] = 1
         featDict[addCheckFeature("tgtYieldRightLast_%s"%tgtYield[-1], inOrOut)] = 1
-
+        
 '''
 Given a rule, this function extracts the lexical items from the rule
 (and if we are looking at word classes converts them into classes) and
@@ -448,7 +469,7 @@ def extractRealValFeatures(hiero_loc, sent_tree, inFeatDict, outFeatDict):
             featVal = float(featElements[1])
             if featVal > 0:
                 inFeatDict[addCheckFeature(featName, "in")] = featVal
-        
+
 def process_hiero_rules(filehandle):
     hiero_rules = {}
     for rule in filehandle:
@@ -463,6 +484,7 @@ as well as the rule of any children if they exist (distinguishing between
 left and right).  The outside rule feature looks at the rule ID of the parent only.
 '''
 def extractRuleFeatures(sent_tree, inFeatDict, outFeatDict):
+    
     inFeatDict[addCheckFeature("RuleSelf_%s"%sent_tree.rule, "in")] = 1 #self-rule ID feature
     child_num = 0
     for child in sent_tree.children: #then add children's IDs

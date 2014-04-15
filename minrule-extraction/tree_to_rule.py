@@ -13,6 +13,7 @@ arg1: source-target sentence pairs, one line per pair, each pair separated by ' 
 arg2: alignments for each sentence pair
 stdin: output of rc code
 stdout: list of rules
+stderr: list of invalid rules
 option/flag 1: -d --> debug, prints out full output (if flag off, prints out Hiero output)
 option/flag 2: -z --> print out to .gz file: need to provide directory where grammars are written, e.g.:
 -z/usr0/home/avneesh/spectral-scfg/data
