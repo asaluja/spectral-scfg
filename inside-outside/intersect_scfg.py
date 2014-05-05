@@ -26,7 +26,7 @@ import sys, commands, string, time, gzip, cPickle, re, getopt, math, hg_io
 import multiprocessing as mp
 from trie import trie, ActiveItem, HyperGraph
 
-(opts, args) = getopt.getopt(sys.argv[1:], 'dnfms')
+(opts, args) = getopt.getopt(sys.argv[1:], 'dnfmst')
 optsDict = {}
 for opt in opts:
     if opt[0] == '-d': #print info about each node in the hypergraph 
@@ -37,8 +37,10 @@ for opt in opts:
         optsDict["flipSign"] = 1
     elif opt[0] == '-m': #MLE 
         optsDict["MLE"] = 1
-    elif opt[0] == '-s': 
+    elif opt[0] == '-s': #source norm
         optsDict["sourceNorm"] = 1
+    elif opt[0] == '-t': #target norm
+        optsDict["targetNorm"] = 1
 
 params_fh = open(args[0], 'rb')
 paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
@@ -60,6 +62,7 @@ def main():
     failed_sentences = mp.Manager().list()
     pool = mp.Pool(processes=numProcesses, initializer=init, initargs=(failed_sentences,))
     for i, line in enumerate(inputFile):
+        #parse(line.strip().split(), "%s/grammar.%d.gz"%(outDir, i), i)
         pool.apply_async(parse, (line.strip().split(), "%s/grammar.%d.gz"%(outDir, i), i))
     pool.close()
     pool.join()
@@ -114,19 +117,51 @@ def computeMarginals(hg, words, outFile):
     flipSign = "flipSign" in optsDict
     nodeMarginal = "nodeMarginal" in optsDict
     sourceNorm = "sourceNorm" in optsDict
+    targetNorm = "targetNorm" in optsDict
     MLE = "MLE" in optsDict
     rankToUse = 0 if MLE else rank
     start = time.clock()
     marginals = hg_io.insideOutside(hg, paramDict, rankToUse, words, flipSign, nodeMarginal)
     ioTime = time.clock() - start
     print "marginals computed over hypergraph. time taken: %.2f sec"%(ioTime)
+    tgt_norm_marginals = None
+    src_norm_marginals = None
+    if targetNorm:
+        tgt_norm_marginals = normalizeMarginalsByTarget(marginals)
     if sourceNorm:
-        marginals = normalizeMarginalsBySource(marginals)        
+        src_norm_marginals = normalizeMarginalsBySource(marginals)        
     fh = gzip.open(outFile, 'w')
     for key in marginals:
-        fh.write("%s ||| spectral=%.3f\n"%(key, math.log(marginals[key])))
+        if sourceNorm and targetNorm:
+            fh.write("%s ||| spectralEGivenF=%.3f spectralFGivenE=%.3f\n"%(key, math.log(src_norm_marginals[key]), math.log(tgt_norm_marginals[key])))
+        elif targetNorm:
+            fh.write("%s ||| spectral=%.3f\n"%(key, math.log(tgt_norm_marginals[key])))
+        elif sourceNorm: #sourceNorm only
+            fh.write("%s ||| spectral=%.3f\n"%(key, math.log(src_norm_marginals[key])))
+        else: #just regular spectral
+            fh.write("%s ||| spectral=%.3f\n"%(key, math.log(marginals[key])))
     fh.write("[S] ||| [X_0_%d] ||| [1] ||| 0\n"%len(words)) #top level rule
     fh.close()
+
+def normalizeMarginalsByTarget(margDict):
+    sortMargDict = {}
+    for key in margDict:
+        elements = key.split(' ||| ')
+        target = ' ||| '.join([elements[0], elements[2]]) #target is actually LHS + RHS target
+        src_marginal = (elements[1], margDict[key])
+        if target in sortMargDict:
+            sortMargDict[target].append(src_marginal)
+        else:
+            sortMargDict[target] = [src_marginal]
+    normMargDict = {}
+    for key in sortMargDict:
+        normalizer = sum([src_marginal[1] for src_marginal in sortMargDict[key]])
+        LHS = key.split(' ||| ')[0]
+        target = key.split(' ||| ')[1]
+        for src_marginal in sortMargDict[key]: #put it back in normal order            
+            format_key = "%s ||| %s ||| %s"%(LHS, src_marginal[0], target)
+            normMargDict[format_key] = 0.999 if src_marginal[1]/normalizer == 1 else src_marginal[1]/normalizer
+    return normMargDict 
 
 def normalizeMarginalsBySource(margDict):
     sortMargDict = {}

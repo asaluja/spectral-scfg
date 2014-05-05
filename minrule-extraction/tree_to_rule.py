@@ -98,7 +98,6 @@ def extractRules(count, original, tree, src, tgt, alignDict, nodeLabel, zipOut, 
     phrase_pair = "%s ||| %s"%(srcStr, tgtStr)
     printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipOut, sentFile)
     for child in children: #recursively do the same for children
-
         extractRules(count, original, child[0], src, tgt, alignDict, child[1], zipOut, sentFile)
 
 def printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipOut, sentFile=None):
@@ -114,7 +113,7 @@ def printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipO
                     nodeStr = "S" if nodeLabel == 0 else "X"
                     sentFile.write("[X] ||| %s\n"%(phrase_pair))
                 elif srcNTCounter > 2:
-                    sys.stderr.write("Sentence %d:Rule '[X] ||| %s' has more than 2 NTs\n"%(count, phrase_pair))
+                    sys.stderr.write("Sentence %d:[X] ||| %s\n"%(count, phrase_pair))
     else: #printing to stdout
         if original:
             print "[%s] ||| %s"%(nodeLabel, phrase_pair)

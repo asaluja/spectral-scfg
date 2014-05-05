@@ -129,9 +129,15 @@ def main():
         else:
             for rule in seen_rules_uniq:
                 output_fh.write("%s\n"%(rule))
+        '''
         output_fh.write("[X] ||| [X,1] [X,2] ||| [X,1] [X,2] ||| DeletionRule=1.0 Glue=1 %s\n"%featureStr)
         output_fh.write("[X] ||| [X,1] [X,2] ||| [X,2] [X,1] ||| DeletionRule=1.0 Glue=1 Inverse=1 %s\n"%featureStr)        
         output_fh.write("[S] ||| [X,1] ||| [X,1] ||| 0\n") #no features defined on the top-level rule, just for parsing completion purposes
+        '''
+        #alternate format below
+        output_fh.write("[X] ||| [X] [X] ||| [1] [2] ||| DeletionRule=1.0 Glue=1 %s\n"%featureStr)
+        output_fh.write("[X] ||| [X] [X] ||| [2] [1] ||| DeletionRule=1.0 Glue=1 Inverse=1 %s\n"%featureStr)        
+        output_fh.write("[S] ||| [X] ||| [1] ||| 0\n") #no features defined on the top-level rule, just for parsing completion purposes
         output_fh.close()
 
 if __name__ == "__main__":

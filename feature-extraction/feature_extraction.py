@@ -16,7 +16,10 @@ Usage: python feature_extraction.py -a -r/usr0/home/avneesh/feat.grammar-loc /us
 Update: December 31, 2013: added lexical and lexical class features.  Note that the word classes should 
 be given in two separate files, one for each language, and that these paths should be separated by a ':'
 Usage: python feature_extraction.py -a -c/path/to/wordClasses -r/path/to/suffixArrayGrammar /path/to/minimalGrammar /path/to/featureNamesOutput rank /path/to/parametersOutput
-Update: January 3, 2013: added computing OOV probability mass as an option
+Update: January 3, 2014: added computing OOV probability mass as an option
+Update: April 14, 2014: added maximum likelihood estimates for parameter estimation as an option
+Update: April 21, 2014: added parameter smoothing as an option 
+Update: May 2, 2014: added span length feature as an option
 '''
 
 import sys, commands, string, gzip, os, os.path, re, getopt, cPickle
@@ -35,7 +38,7 @@ outFeatIDs = {} #same as inFeatIDs
 outFeatID = 0
 def main():
     featBinDict = {}
-    (opts, args) = getopt.getopt(sys.argv[1:], 'ac:f:lmor:')
+    (opts, args) = getopt.getopt(sys.argv[1:], 'ac:f:lLmor:s:')
     for opt in opts:
         if opt[0] == '-a': #arity feature
             featBinDict["arityF"] = 1
@@ -46,12 +49,16 @@ def main():
             featBinDict["filterRules"] = int(opt[1])
         elif opt[0] == '-l': #lexical features
             featBinDict["lexF"] = 1
+        elif opt[0] == '-L': #span length feature
+            featBinDict["lengthF"] = 1
         elif opt[0] == '-m': #ML estimate
             featBinDict["MLE"] = 1
         elif opt[0] == '-o': #OOV
             featBinDict["OOV"] = 1
         elif opt[0] == '-r': #real-valued features
             featBinDict["realF"] = opt[1]
+        elif opt[0] == '-s': #smoothing option
+            featBinDict["smooth"] = float(opt[1])
     minRule_grammars_loc = args[0]
     numSentences = len(os.listdir(minRule_grammars_loc))
     featname_out_loc = args[1]
@@ -71,7 +78,7 @@ def main():
     out_fm = convertToSpMat(outFeatures, len(outFeatIDs), kappa)
     Y,Z = SVDandProjection(in_fm, out_fm, rank) #compute avg outer product, call Matlab to do SVD, extract Y and Z matrices
     sys.stderr.write("SVD and projections complete\n")    
-    paramDict, countDict = computeCorrelations(Y,Z) #compute tensors, matrices, and vectors
+    paramDict, countDict = computeCorrelationsAndSmooth(Y, Z, featBinDict["smooth"]) if "smooth" in featBinDict else computeCorrelations(Y, Z) #compute tensors, matrices, and vectors
     paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
     sys.stderr.write("Parameter estimation complete\n")
     if "filterRules" in featBinDict:
@@ -162,7 +169,7 @@ def filterRulesByCount(countDict, paramDict, limit):
             for rule in rules_to_filter:
                 paramDict[src_rule].pop(rule) #remove it from the parameter srcDict
                 countDict[src_rule].pop(rule) #remove it from the count srcDict
-            if len(rules_to_filter) > 0:
+            if len(rules_to_filter) > 0: #N.B.: need to update this to output the correct number
                 sys.stderr.write("Source RHS: %s; out of %d rules, filtered %d\n"%(src_rule, len(countDict[src_rule]), len(rules_to_filter)))
 
 '''
@@ -178,6 +185,96 @@ def estimatePiParams(root_rules, Y, rank):
     return outerProd
 
 '''
+This function is exactly the same as computeCorrelations, except we also smooth
+the parameters according to the smoothing scheme described in Cohen et al., NAACL 2013
+but with suitable modifications to also handle unary rules. 
+We do not do any smoothing for the lexical rules. 
+'''
+def computeCorrelationsAndSmooth(Y, Z, C):
+    paramDict = {}
+    countDict = {}
+    numExamples = Y.shape[0]
+    rank = Y.shape[1]
+    F = np.multiply(np.sum(Y, axis=0), 1.0/numExamples)
+    H = np.multiply(np.sum(Z, axis=0), 1.0/numExamples)
+    E_4_tensor = tensorProduct(H, F, F)
+    E_4_matrix = np.outer(H, F)
+    for rule in exampleIDs: #rule is in the form 'LHS ||| src ||| tgt'
+        arity = len(exampleIDs[rule][0].split())
+        ruleCount = len(exampleIDs[rule]) #|Q^{a \rightarrow b c}| in the paper
+        coeff = np.sqrt(ruleCount) / (C + np.sqrt(ruleCount))
+        scale = float(ruleCount) / numExamples #MLE scaling for the end
+        param, outerProd = None, None
+        secMom_firstFree, secMom_secFree, secMom_thirdFree = None, None, None
+        firstMom_firstFix, firstMom_secFix, firstMom_thirdFix = None, None, None
+        if arity == 3: 
+            outerProd = np.zeros(shape=(rank, rank, rank))
+            secMom_firstFree, secMom_secFree, secMom_thirdFree = np.zeros(shape=(rank, rank)), np.zeros(shape=(rank, rank)), np.zeros(shape=(rank, rank))
+            firstMom_firstFix, firstMom_secFix, firstMom_thirdFix = np.zeros(shape=(rank)), np.zeros(shape=(rank)), np.zeros(shape=(rank))
+            for ins_out_pair in exampleIDs[rule]:
+                in_idx = [int(num) for num in re.findall("In:(\d+)", ins_out_pair)]
+                out_idx = int(re.findall("Out:(\d+)", ins_out_pair)[0])
+                outerProd += tensorProduct(Z[out_idx,:], Y[in_idx[0],:], Y[in_idx[1],:])                            
+                secMom_firstFree += np.outer(Y[in_idx[0], :], Y[in_idx[1], :])
+                secMom_secFree += np.outer(Z[out_idx,:], Y[in_idx[1], :])
+                secMom_thirdFree += np.outer(Z[out_idx,:], Y[in_idx[0], :])
+                firstMom_firstFix += Z[out_idx,:]
+                firstMom_secFix += Y[in_idx[0], :]
+                firstMom_thirdFix += Y[in_idx[1], :]
+            outerProd = np.multiply(outerProd, 1.0/ruleCount)
+            firstRes = matrixVectorOuterProd(np.multiply(secMom_thirdFree, 1.0/ruleCount), np.multiply(firstMom_thirdFix, 1.0/ruleCount))
+            secondRes = matrixVectorOuterProd(np.multiply(secMom_secFree, 1.0/ruleCount), np.multiply(firstMom_secFix, 1.0/ruleCount))
+            thirdRes = matrixVectorOuterProd(np.multiply(secMom_firstFree, 1.0/ruleCount), np.multiply(firstMom_firstFix, 1.0/ruleCount))
+            E_2 = np.multiply(firstRes, 1.0/3) + np.multiply(secondRes, 1.0/3) + np.multiply(thirdRes, 1.0/3)
+            E_3 = tensorProduct(np.multiply(firstMom_firstFix, 1.0/ruleCount), np.multiply(firstMom_secFix, 1.0/ruleCount), np.multiply(firstMom_thirdFix, 1.0/ruleCount))
+            K = coeff*E_3 + (1-coeff)*E_4_tensor
+            param = coeff*outerProd + (1-coeff)*(coeff*E_2 + (1-coeff)*K)
+        elif arity == 2:
+            outerProd = np.zeros(shape=(rank, rank))
+            firstMom_firstFix, firstMom_secFix = np.zeros(shape=(rank)), np.zeros(shape=(rank))
+            for ins_out_pair in exampleIDs[rule]:
+                in_idx = int(re.findall("In:(\d+)", ins_out_pair)[0])
+                out_idx = int(re.findall("Out:(\d+)", ins_out_pair)[0])
+                outerProd += np.outer(Z[out_idx,:], Y[in_idx,:])
+                firstMom_firstFix += Z[out_idx, :]
+                firstMom_secFix += Y[in_idx, :]
+            outerProd = np.multiply(outerProd, 1.0/ruleCount)
+            E_3 = np.outer(np.multiply(firstMom_firstFix, 1.0/ruleCount), np.multiply(firstMom_secFix, 1.0/ruleCount))
+            K = coeff*E_3 + (1-coeff)*E_4_matrix
+            param = coeff*outerProd + (1-coeff)*K
+        elif arity == 1: #no smoothing for lexical rules
+            outerProd = np.zeros(shape=(rank))
+            for ins_out_pair in exampleIDs[rule]:                
+                out_idx = int(re.findall("Out:(\d+)", ins_out_pair)[0])
+                outerProd += Z[out_idx,:]
+            param = np.multiply(outerProd, 1.0/ruleCount)
+        else:
+            sys.stderr.write("Rule has more than 2 inside trees or more than 1 outside tree!\n%s\n"%rule)
+        param = np.multiply(param, scale) #scale by MLE 
+        elements = rule.split(' ||| ')
+        src_key = ' ||| '.join(elements[:-1])
+        tgt_key = elements[-1]
+        srcDict = paramDict[src_key] if src_key in paramDict else {}
+        srcCountDict = countDict[src_key] if src_key in countDict else {}
+        srcDict[tgt_key] = param
+        srcCountDict[tgt_key] = len(exampleIDs[rule]) #for MLE estimates
+        paramDict[src_key] = srcDict
+        countDict[src_key] = srcCountDict
+    return (paramDict, countDict)
+
+'''
+function to compute outer product between a matrix and a vector. 
+'''        
+def matrixVectorOuterProd(matrix, vector):
+    rank = vector.shape[0]
+    result = np.zeros(shape=(rank, rank, rank))
+    idx = 0
+    for val in np.nditer(vector):
+        result[:,:,idx] = np.multiply(matrix, val)
+        idx += 1
+    return result
+
+'''
 the main function that computes the parameters associated with 
 the various rules by computing outer products of feature vectors. 
 Row indices to the inside and outside feature vectors are stored
@@ -189,16 +286,16 @@ def computeCorrelations(Y, Z):
     countDict = {}
     numExamples = Y.shape[0]
     rank = Y.shape[1]
+    scale = 1.0 / numExamples
     for rule in exampleIDs: #rule is an actual rule LHS ||| src ||| tgt
         arity = len(exampleIDs[rule][0].split())
-        scale = 1.0 / numExamples
         outerProd = None
         if arity == 3: #compute tensor
             outerProd = np.zeros(shape=(rank, rank, rank))
             for ins_out_pair in exampleIDs[rule]:
                 in_idx = [int(num) for num in re.findall("In:(\d+)", ins_out_pair)]
                 out_idx = int(re.findall("Out:(\d+)", ins_out_pair)[0])
-                outerProd += tensorProduct(Z[out_idx,:], Y[in_idx[0],:], Y[in_idx[1],:])            
+                outerProd += tensorProduct(Z[out_idx,:], Y[in_idx[0],:], Y[in_idx[1],:])                            
         elif arity == 2: #compute matrix
             outerProd = np.zeros(shape=(rank, rank))
             for ins_out_pair in exampleIDs[rule]:
@@ -225,7 +322,7 @@ def computeCorrelations(Y, Z):
     return (paramDict, countDict)
 
 '''
-Function description here
+Function used in MLE for normalization purposes. 
 '''
 def normalizeCountDict(countDict):
     normalizer = 0
@@ -350,6 +447,8 @@ def update_features(sent_tree, inFeat, outFeat, featBinDict):
             extractLexicalFeatures(sent_tree, insFeatDict, outFeatDict, False)
         if "classF" in featBinDict:
             extractLexicalFeatures(sent_tree, insFeatDict, outFeatDict, True, featBinDict["classF"])
+        if "lengthF" in featBinDict:
+            extractSpanLengthFeatures(sent_tree, insFeatDict, outFeatDict)
         #define additional feature handling here
         inFeat.append(insFeatDict)
         outFeat.append(outFeatDict)
@@ -374,6 +473,50 @@ def update_features(sent_tree, inFeat, outFeat, featBinDict):
         print "%d %s ||| %s"%(curID, sent_tree.rule, ' '.join(exIDs))
     return curID
 
+def bucketSpanLength(span_length):
+    if span_length <= 5:
+        return span_length
+    elif 5 < span_length and span_length <= 10:
+        return 6
+    elif 10 < span_length and span_length <= 20:
+        return 7
+    else:
+        return 8
+
+def extractSpanLengthFeatures(sent_tree, inFeatDict, outFeatDict):
+    srcSpanLength = bucketSpanLength(len(sent_tree.srcYield().split()))
+    tgtSpanLength = bucketSpanLength(len(sent_tree.tgtYield().split()))
+    inFeatDict[addCheckFeature("srcSpanLength_%d"%srcSpanLength, "in")] = 1
+    inFeatDict[addCheckFeature("tgtSpanLength_%d"%tgtSpanLength, "in")] = 1
+    leftChild = True
+    for child in sent_tree.children: #add length features of children
+        srcSpanLengthChild = bucketSpanLength(len(child.srcYield().split()))
+        tgtSpanLengthChild = bucketSpanLength(len(child.tgtYield().split()))
+        if leftChild:
+            inFeatDict[addCheckFeature("srcSpanLengthLeftChild_%d"%srcSpanLengthChild, "in")] = 1
+            inFeatDict[addCheckFeature("tgtSpanLengthLeftChild_%d"%tgtSpanLengthChild, "in")] = 1
+        else:
+            inFeatDict[addCheckFeature("srcSpanLengthRightChild_%d"%srcSpanLengthChild, "in")] = 1
+            inFeatDict[addCheckFeature("tgtSpanLengthRightChild_%d"%tgtSpanLengthChild, "in")] = 1
+        leftChild = False
+    if sent_tree.parent is not None:
+        srcSpanLengthParent = bucketSpanLength(len(sent_tree.parent.srcYield().split()))
+        tgtSpanLengthParent = bucketSpanLength(len(sent_tree.parent.tgtYield().split()))
+        outFeatDict[addCheckFeature("srcSpanLengthParent_%d"%srcSpanLengthParent, "out")] = 1
+        outFeatDict[addCheckFeature("tgtSpanLengthParent_%d"%tgtSpanLengthParent, "out")] = 1
+        leftChild = True
+        for child in sent_tree.parent.children:
+            if child is not sent_tree:
+                srcSpanLengthSibling = bucketSpanLength(len(child.srcYield().split()))
+                tgtSpanLengthSibling = bucketSpanLength(len(child.tgtYield().split()))
+                if leftChild:
+                    outFeatDict[addCheckFeature("srcSpanLengthLeftSibling_%d"%srcSpanLengthSibling, "out")] = 1
+                    outFeatDict[addCheckFeature("tgtSpanLengthLeftSibling_%d"%tgtSpanLengthSibling, "out")] = 1
+                else:
+                    outFeatDict[addCheckFeature("srcSpanLengthLeftSibling_%d"%srcSpanLengthSibling, "out")] = 1
+                    outFeatDict[addCheckFeature("tgtSpanLengthLeftSibling_%d"%tgtSpanLengthSibling, "out")] = 1
+                leftChild = False
+
 '''
 extracts words (or word classes) of any lexical items
 in the current rule, as well as those in the yield of the
@@ -390,7 +533,7 @@ def extractLexicalFeatures(sent_tree, inFeatDict, outFeatDict, isClass, classDic
             addYieldFeatures(srcY, tgtY, inFeatDict, leftChild, "in")
         else:
             addYieldFeatures(child.srcYield().split(), child.tgtYield().split(), inFeatDict, leftChild, "in")
-        leftChild = False
+        leftChild = False    
     if sent_tree.parent is not None:
         addRuleLexFeatures(sent_tree.parent, outFeatDict, "out", isClass, classDictTuple)
         leftChild = True
@@ -419,7 +562,7 @@ def addYieldFeatures(srcYield, tgtYield, featDict, isLeft, inOrOut):
         featDict[addCheckFeature("srcYieldRightFirst_%s"%srcYield[0], inOrOut)] = 1
         featDict[addCheckFeature("srcYieldRightLast_%s"%srcYield[-1], inOrOut)] = 1
         featDict[addCheckFeature("tgtYieldRightFirst_%s"%tgtYield[0], inOrOut)] = 1
-        featDict[addCheckFeature("tgtYieldRightLast_%s"%tgtYield[-1], inOrOut)] = 1
+        featDict[addCheckFeature("tgtYieldRightLast_%s"%tgtYield[-1], inOrOut)] = 1    
         
 '''
 Given a rule, this function extracts the lexical items from the rule
@@ -483,8 +626,7 @@ Note: the inside rule feature below extract the rule ID of the current rule,
 as well as the rule of any children if they exist (distinguishing between
 left and right).  The outside rule feature looks at the rule ID of the parent only.
 '''
-def extractRuleFeatures(sent_tree, inFeatDict, outFeatDict):
-    
+def extractRuleFeatures(sent_tree, inFeatDict, outFeatDict):    
     inFeatDict[addCheckFeature("RuleSelf_%s"%sent_tree.rule, "in")] = 1 #self-rule ID feature
     child_num = 0
     for child in sent_tree.children: #then add children's IDs

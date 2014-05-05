@@ -22,7 +22,6 @@ def processInvalidSentences(filename):
 
 def main():
     invalidSentences = processInvalidSentences(sys.argv[1])
-    print len(invalidSentences)
     for lineNum,line in enumerate(sys.stdin):
         if lineNum not in invalidSentences:
             print line.strip()
