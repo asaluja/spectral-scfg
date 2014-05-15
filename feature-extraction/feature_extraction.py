@@ -455,7 +455,7 @@ def update_features(sent_tree, inFeat, outFeat, featBinDict):
         curID = exampleID
         exampleID += 1
     else:
-        sys.stderr.write("Rule %s' has more than 2 NTs, filtered out from parameter estimation\n"%(sent_tree.rule))
+        sys.stderr.write("Rule %s has more than 2 NTs, filtered out from parameter estimation\n"%(sent_tree.rule))
     exIDs = []
     for child in sent_tree.children: #at this stage, recurse on children
         childID = update_features(child, inFeat, outFeat, featBinDict)

@@ -18,7 +18,8 @@ def extractPreTerminals(filehandle, N):
         src = elements[1]
         if len(src.split()) == 1 and not expr.match(src): #one-word pre-term and not an NT
             pos = int(elements[0].split('_')[1])
-            marginal = float(elements[3].split('=')[1])
+            #marginal = float(elements[3].split('=')[1])
+            marginal = float(elements[3].split()[0].split('=')[1])
             rules[pos].append((elements[2], marginal))
     return rules
 

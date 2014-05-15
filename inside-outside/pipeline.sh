@@ -17,7 +17,7 @@ numProc=${12}
 #python ${scripts}/scripts/escape_special_characters.py < $devSrc > ${working}/dev.src.filt
 cp $devSrc ${working}/dev.src
 mkdir ${working}/rank${rank}-dev/
-python ${scripts}/inside-outside/intersect_scfg.py -f -s $params $rank ${working}/dev.src $numProc ${working}/rank${rank}-dev/
+python ${scripts}/inside-outside/intersect_scfg.py -f $params $rank ${working}/dev.src $numProc ${working}/rank${rank}-dev/
 mkdir ${working}/dec-rank${rank}-dev/
 python ${scripts}/inside-outside/featurize_rules.py ${working}/rank${rank}-dev/ $devGrammar ${working}/dec-rank${rank}-dev/ $numProc
 rm -rf ${working}/rank${rank}-dev/
@@ -28,7 +28,7 @@ rm ${working}/dev.src
 #python ${scripts}/scripts/escape_special_characters.py < $testSrc > ${working}/devtest.src.filt
 cp $testSrc ${working}/devtest.src
 mkdir ${working}/rank${rank}-devtest/
-python ${scripts}/inside-outside/intersect_scfg.py -f -s $params $rank ${working}/devtest.src $numProc ${working}/rank${rank}-devtest/
+python ${scripts}/inside-outside/intersect_scfg.py -f $params $rank ${working}/devtest.src $numProc ${working}/rank${rank}-devtest/
 mkdir ${working}/dec-rank${rank}-devtest/
 python ${scripts}/inside-outside/featurize_rules.py ${working}/rank${rank}-devtest/ $testGrammar ${working}/dec-rank${rank}-devtest/ $numProc
 rm -rf ${working}/rank${rank}-devtest/

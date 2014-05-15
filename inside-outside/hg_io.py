@@ -121,12 +121,14 @@ in nodeMarginals, the marginal is associated with an NT span.
 This corresponds exactly to a node. 
 NOTE: need to update for mle estimates
 '''
-def nodeMarginals(alpha, beta, hg, flipSign, words):
+def nodeMarginals(alpha, beta, normalizer, hg, flipSign, words):
     marginals = {}
+    flipped = False
     for node in hg.nodes_:
         LHS = node.cat[:-1] + "_%d_%d]"%(node.i, node.j)
-        marginal = np.dot(alpha[node.id], beta[node.id])        
+        marginal = np.dot(alpha[node.id], beta[node.id]) / normalizer
         if marginal < 0:
+            flipped = True
             if flipSign:
                 marginal = -marginal
             else:
@@ -139,7 +141,7 @@ def nodeMarginals(alpha, beta, hg, flipSign, words):
                 src_tgt_decorated = "<unk> ||| %s"%(words[node.i]) if target_rule == "<unk>" else "%s ||| %s"(src_decorated, decorateTgtRule(target_rule))
                 lhs_src_tgt = ' ||| '.join([LHS, src_tgt_decorated])
                 marginals[lhs_src_tgt] = marginal #associate the marginal to each rule
-    return marginals
+    return marginals, flipped
 
 '''
 in edge marginals, the marginal is associated with a particular
@@ -148,11 +150,13 @@ of the head node and the alpha vectors of the tail nodes, and
 multiply them through the parameter associated with the rule to
 get the edge marginal.  
 '''
-def edgeMarginals(alpha, beta, hg, flipSign, rank, paramDict, words):
+def edgeMarginals(alpha, beta, normalizer, hg, flipSign, rank, paramDict, words):
     marginals = {}
+    #sentence_marginal = 0
+    flipped = False
     for edge in hg.edges_:
-        head = hg.nodes_[edge.headNode]
-        tail = edge.tailNodes        
+        head = hg.nodes_[edge.headNode] #head is an actual node
+        tail = edge.tailNodes #tail is list of node IDs
         beta_head = beta[edge.headNode]
         LHS = head.cat[:-1] + "_%d_%d]"%(head.i, head.j)
         key = ' ||| '.join([head.cat, edge.rule])
@@ -176,19 +180,26 @@ def edgeMarginals(alpha, beta, hg, flipSign, rank, paramDict, words):
                     marginal = alpha[tail[0]].dot(result).dot(alpha[tail[1]])
             else:
                 sys.stderr.write("Arity > 2! Cannot compute marginals for rule %s\n"%lhs_src_tgt)
+            marginal /= normalizer
             if marginal < 0:
+                flipped = True
                 if flipSign:
                     marginal = -marginal
                 else:
                     sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g; try using '-f' flag to flip sign\n"%(head.i, head.j, marginal))
+                    return marginals, flipped
             if marginal > 0:
-                marginals[lhs_src_tgt] = marginal
-    return marginals
+                marginals[lhs_src_tgt] = marginal                
+            #if edge.headNode == hg.nodes_[-1].id: #top-level rule
+            #    sentence_marginal += marginal
+    #print "Sentence marginal through summation is %.5g"%sentence_marginal
+    return marginals, flipped
                 
 def insideOutside(hg, paramDict, rank, words, flipSign, nodeMarginal):
     alpha = computeInside(hg, paramDict, rank)    #paramDict keys are 'LHS ||| src_RHS' format
     beta = computeOutside(hg, paramDict, rank, alpha)
-    marginals = nodeMarginals(alpha, beta, hg, flipSign, words) if nodeMarginal else edgeMarginals(alpha, beta, hg, flipSign, rank, paramDict, words)
-    return marginals #key of marginals is a decorated entire rule LHS ||| src RHS ||| tgt RHS
+    g = alpha[hg.nodes_[-1].id] if rank == 0 else alpha[hg.nodes_[-1].id].dot(paramDict["Pi"]) #take alpha of the top rule, dot product it with Pi parameters
+    marginals, flipped = nodeMarginals(alpha, beta, g, hg, flipSign, words) if nodeMarginal else edgeMarginals(alpha, beta, g, hg, flipSign, rank, paramDict, words)
+    return marginals, flipped #key of marginals is a decorated entire rule LHS ||| src RHS ||| tgt RHS
     
 
