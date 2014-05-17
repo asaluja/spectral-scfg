@@ -81,6 +81,27 @@ def main():
     paramDict, countDict = computeCorrelationsAndSmooth(Y, Z, featBinDict["smooth"]) if "smooth" in featBinDict else computeCorrelations(Y, Z) #compute tensors, matrices, and vectors
     paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
     sys.stderr.write("Parameter estimation complete\n")
+    '''
+    G = np.random.random_sample((rank, rank))
+    G = G + G.transpose()
+    Ginv = np.linalg.inv(G)
+    for src_RHS in paramDict:
+        if src_RHS == "Pi":
+            paramDict[src_RHS] = np.absolute(paramDict[src_RHS]).dot(Ginv)
+        else:
+            for target_RHS in paramDict[src_RHS]:
+                parameter = np.absolute(paramDict[src_RHS][target_RHS])
+                arity = len(parameter.shape) - 1
+                if arity == 0:
+                    paramDict[src_RHS][target_RHS] = G.dot(parameter)
+                elif arity == 1:
+                    paramDict[src_RHS][target_RHS] = G.dot(parameter).dot(Ginv)
+                elif arity == 2:
+                    result = np.tensordot(G, parameter, axes=[1,0])
+                    result = np.tensordot(Ginv, result, axes=[1,1]).swapaxes(0,1)
+                    result = np.tensordot(Ginv, result, axes=[1,2]).swapaxes(1,2)
+                    paramDict[src_RHS][target_RHS] = result
+    '''    
     if "filterRules" in featBinDict:
         filterRulesByCount(countDict, paramDict, featBinDict["filterRules"])        
     if "MLE" in featBinDict: #if we are just dealing with MLE estimates, then write them out directly
@@ -182,6 +203,7 @@ def estimatePiParams(root_rules, Y, rank):
     for row_idx in root_rules:
         outerProd += Y[row_idx,:].transpose()
     outerProd = np.multiply(outerProd, 1.0/len(root_rules))
+    #outerProd = np.multiply(outerProd, 1.0/Y.shape[0])
     return outerProd
 
 '''
@@ -328,7 +350,7 @@ def normalizeCountDict(countDict):
     normalizer = 0
     for srcKey in countDict:
         #normalizer = sum([countDict[srcKey][tgtKey] for tgtKey in countDict[srcKey]])
-        normalizer += sum([countDict[srcKey][tgtKey] for tgtKey in countDict[srcKey]])
+        normalizer += sum([countDict[srcKey][tgtKey] for tgtKey in countDict[srcKey]]) #joint normalization
     for srcKey in countDict: 
         for tgtKey in countDict[srcKey]:
             countDict[srcKey][tgtKey] /= float(normalizer)

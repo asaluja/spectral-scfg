@@ -107,20 +107,20 @@ def printRule(count, srcNTCounter, original, isLex, nodeLabel, phrase_pair, zipO
             return
         else:
             if original:
-                sentFile.write("[%s] ||| %s\n"%(nodeLabel, phrase_pair))
+                sentFile.write("[%s] ||| %s |||\n"%(nodeLabel, phrase_pair))
             else: #print Hiero grammar
                 if isLex and srcNTCounter < 3:
                     nodeStr = "S" if nodeLabel == 0 else "X"
-                    sentFile.write("[X] ||| %s\n"%(phrase_pair))
+                    sentFile.write("[X] ||| %s |||\n"%(phrase_pair))
                 elif srcNTCounter > 2:
-                    sys.stderr.write("Sentence %d:[X] ||| %s\n"%(count, phrase_pair))
+                    sys.stderr.write("Sentence %d:[X] ||| %s |||\n"%(count, phrase_pair))
     else: #printing to stdout
         if original:
-            print "[%s] ||| %s"%(nodeLabel, phrase_pair)
+            print "[%s] ||| %s |||"%(nodeLabel, phrase_pair)
         else:
             if isLex and srcNTCounter < 3:
                 nodeStr = "S" if nodeLabel == 0 else "X"                
-                print "[X] ||| %s"%(phrase_pair)
+                print "[X] ||| %s |||"%(phrase_pair)
             elif srcNTCounter > 2:
                 sys.stderr.write("Sentence %d:Rule '[X] ||| %s' has more than 2 NTs\n"%(count, phrase_pair))
 

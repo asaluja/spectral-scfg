@@ -50,8 +50,8 @@ def computeInside(hg, paramDict, rank):
                     if rank == 0:
                         result = srcDict[target_rule] * x1_alpha * x2_alpha
                     else:
-                        result = np.tensordot(srcDict[target_rule], x2_alpha, axes=([2], [0]))
-                        result = np.tensordot(result, x1_alpha, axes=([1], [0]))
+                        result = np.tensordot(x2_alpha, srcDict[target_rule], axes=[0,2])
+                        result = result.dot(x1_alpha)
                     aggregate += result
                 else:
                     sys.stderr.write("Arity > 2! Cannot compute alpha terms\n")
@@ -84,11 +84,11 @@ def computeOutside(hg, paramDict, rank, alphaDict):
                         betaDict[tail[0]] += result * alphaDict[tail[1]] #multiply by x_alpha_right
                         betaDict[tail[1]] += result * alphaDict[tail[0]]
                     else:
-                        result = np.tensordot(srcDict[target_rule], x_beta, axes=([0], [0])) #because we are defining axis, order of param and x_beta doesn't matter
+                        result = np.tensordot(x_beta, srcDict[target_rule], axes=[0,0]) 
                         x_alpha_right = alphaDict[tail[1]]
-                        betaDict[tail[0]] += np.tensordot(result, x_alpha_right, axes=([1], [0]))
+                        betaDict[tail[0]] += result.dot(x_alpha_right)
                         x_alpha_left = alphaDict[tail[0]]
-                        betaDict[tail[1]] += np.tensordot(result, x_alpha_left, axes=([0], [0]))                
+                        betaDict[tail[1]] += x_alpha_left.dot(result)
     return betaDict
 
 def decorateSrcRule(hg, inEdgeID):

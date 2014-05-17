@@ -99,6 +99,33 @@ def InitCounts(training_tree, rank):
     for child in training_tree.children: #at this stage, recurse on children
         InitCounts(child, rank)
 
+'''
+this function implements Matsuzaki initialization:
+'''
+def InitCountsMatsuzaki(training_tree, rank, mle_params):
+    a = math.log(-3)
+    b = math.log(3)
+    if training_tree.rule not in params:
+        arity = CheckArity(training_tree.rule)
+        rule = training_tree.rule.split(' ||| ')
+        srcKey = ' ||| '.join(rule[0:2])
+        tgtKey = rule[2]
+        mle = mle_params[srcKey][tgtKey]
+        unnormalized = None
+        if arity == 2:
+            unnormalized = (b-a)*np.random.random_sample((rank, rank, rank))+a
+        elif arity == 1:
+            unnormalized = (b-a)*np.random.random_sample((rank, rank))+a
+        elif arity == 0:
+            unnormalized = (b-a)*np.random.random_sample((rank,))+a
+        else:
+            sys.stderr.write("Rule %s has more than 2 NTs, not included in parameter dictionary\n"%training_tree.rule)
+        if unnormalized is not None:
+            unnormalized *= mle
+            params[training_tree.rule] = NormalizeParam(unnormalized)
+    for child in training_tree.children:
+        InitCountsMatsuzaki(child, rank, mle_params)
+
 def ComputeInside(training_tree, alpha): 
     alpha_children = []
     for child in training_tree.children:
@@ -233,10 +260,12 @@ def MaximizationStep(paramDict):
 def main():
     global params
     optsDict = {}
-    (opts, args) = getopt.getopt(sys.argv[1:], 'n:')
+    (opts, args) = getopt.getopt(sys.argv[1:], 'm:n:')
     for opt in opts:
         if opt[0] == '-n': #number of processes
             optsDict["numProc"] = int(opt[1])
+        elif opt[0] == '-m': #matsuzaki initialization
+            optsDict["Matsuzaki"] = opt[1] #contains location of MLE params
     minrule_grammars_loc = args[0]
     rank = int(args[1])
     if "numProc" not in optsDict:
@@ -253,8 +282,15 @@ def main():
             sys.stderr.write("Training example %d has invalid tree (contains rule with # NTs on RHS > 2)\n"%lineNum)
     print "Read in training tree examples"
     params = {}
+    mle_params = None
+    if "Matsuzaki" in optsDict:
+        params_fh = open(mleloc, 'rb')
+        mle_params = cPickle.load(params_fh)
     for training_tree in training_examples: #only loops through valid rules
-        InitCounts(training_tree, rank)
+        if "Matsuzaki" in optsDict:
+            InitCountsMatsuzaki(training_tree, rank, mle_params)
+        else:
+            InitCounts(training_tree, rank)
     params["Pi"] = NormalizeParam(np.random.random_sample((rank,)))
     print "Initialized parameters for rules in training corpus"
 
