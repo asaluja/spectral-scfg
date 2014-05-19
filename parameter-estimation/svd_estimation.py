@@ -1,4 +1,5 @@
 #!/usr/bin/python -tt
+
 '''
 File: feature_extraction.py
 Author: Avneesh Saluja (avneesh@cs.cmu.edu)
@@ -20,9 +21,10 @@ Update: January 3, 2014: added computing OOV probability mass as an option
 Update: April 14, 2014: added maximum likelihood estimates for parameter estimation as an option
 Update: April 21, 2014: added parameter smoothing as an option 
 Update: May 2, 2014: added span length feature as an option
+Update: May 18, 2014: writes out raw count dictionary for MLE (so that EM can use this information for OOV)
 '''
 
-import sys, commands, string, gzip, os, os.path, re, getopt, cPickle
+import sys, commands, string, gzip, os, os.path, re, getopt, cPickle, time
 import numpy as np
 import scipy.sparse as sp
 import scipy.linalg as la
@@ -52,7 +54,7 @@ def main():
         elif opt[0] == '-L': #span length feature
             featBinDict["lengthF"] = 1
         elif opt[0] == '-m': #ML estimate
-            featBinDict["MLE"] = 1
+            featBinDict["MLE"] = opt[1] #argument writes out raw count dictionary before normalization
         elif opt[0] == '-o': #OOV
             featBinDict["OOV"] = 1
         elif opt[0] == '-r': #real-valued features
@@ -62,25 +64,39 @@ def main():
     minRule_grammars_loc = args[0]
     numSentences = len(os.listdir(minRule_grammars_loc))
     featname_out_loc = args[1]
+
     inFeatures = []
     outFeatures = []
     root_rules = [] #maintain row indices of rules that occur at root
-    for line_num in range(0, numSentences): #loop through all sentence pairs
+    start = time.clock()
+    for line_num in range(0, numSentences): #loop through all sentence pairs and extract features
         minrule_fh = gzip.open(minRule_grammars_loc + "grammar.%d.gz"%(line_num))
         sync_tree = tree(0, None, None, minrule_fh) #use tree class to generate the tree using the minimal grammar for this sentence                        
         root_rules.append(update_features(sync_tree, inFeatures, outFeatures, featBinDict))
-    sys.stderr.write("Feature extraction complete\n")
+    timeTaken = time.clock() - start
+    sys.stderr.write("Feature extraction complete. Time taken: %.3f sec\n"%timeTaken)
     kappa = 5.0
     rank = int(args[2])
-    if "OOV" in featBinDict:
+    if "OOV" in featBinDict: #only treat unigram OOVs; we re-organize inside features to reflect this
         computeOOVProbMass(inFeatures)
     in_fm = convertToSpMat(inFeatures, len(inFeatIDs), kappa) #convert to SpMat also does the feature scaling
     out_fm = convertToSpMat(outFeatures, len(outFeatIDs), kappa)
+    start = time.clock()
     Y,Z = SVDandProjection(in_fm, out_fm, rank) #compute avg outer product, call Matlab to do SVD, extract Y and Z matrices
-    sys.stderr.write("SVD and projections complete\n")    
+    timeTaken = time.clock() - start
+    sys.stderr.write("SVD and projections complete. Time taken: %.3f sec\n"%timeTaken)    
+    start = time.clock()
     paramDict, countDict = computeCorrelationsAndSmooth(Y, Z, featBinDict["smooth"]) if "smooth" in featBinDict else computeCorrelations(Y, Z) #compute tensors, matrices, and vectors
     paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
-    sys.stderr.write("Parameter estimation complete\n")
+    if "OOV" not in featBinDict: #assign 0 to OOVs if we explicitly do not want a parameter for them
+        srcKey = "[X] ||| <unk>"
+        tgtKey = "<unk>"
+        paramDict[srcKey] = {}
+        paramDict[srcKey][tgtKey] = np.zeros((rank))
+        countDict[srcKey] = {}
+        countDict[srcKey][tgtKey] = 0
+    timeTaken = time.clock() - start
+    sys.stderr.write("Parameter estimation complete. Time taken: %.3f sec\n"%timeTaken)
     '''
     G = np.random.random_sample((rank, rank))
     G = G + G.transpose()
@@ -103,11 +119,19 @@ def main():
                     paramDict[src_RHS][target_RHS] = result
     '''    
     if "filterRules" in featBinDict:
+        start = time.clock()
         filterRulesByCount(countDict, paramDict, featBinDict["filterRules"])        
+        timeTaken = time.clock() - start
+        sys.stderr.write("Filtered rules to keep top %d per source RHS.  Time taken: %.3f sec\n"%(featBinDict["filterRules"], timeTaken))
     if "MLE" in featBinDict: #if we are just dealing with MLE estimates, then write them out directly
+        start = time.clock()
+        cPickle.dump(countDict, open(featBinDict["MLE"], "wb"))
         normalizeCountDict(countDict)
         cPickle.dump(countDict, open(args[3], "wb"))
+        timeTaken = time.clock() - start
+        sys.stderr.write("Wrote out raw counts, normalized counts, and wrote out normalized counts.  Time taken: %.3f sec\n"%timeTaken)
     else:
+        start = time.clock()
         cPickle.dump(paramDict, open(args[3], "wb")) #write out in cPickle format for I/O algorithm
         featNameHandle = open(featname_out_loc, 'w')
         for feature in inFeatIDs: #write out feature names and IDs
@@ -115,6 +139,9 @@ def main():
         for feature in outFeatIDs:
             print >> featNameHandle, "OUTSIDE %s:%d"%(feature, outFeatIDs[feature])
         featNameHandle.close()        
+        timeTaken = time.clock() - start
+        sys.stderr.write("Wrote out parameters and features.  Time taken: %.3f sec\n"%timeTaken)
+    sys.stderr.write("Parameter estimation complete\n")
 
 '''
 for debugging purposes
@@ -187,11 +214,12 @@ def filterRulesByCount(countDict, paramDict, limit):
         if len(countDict[src_rule]) > limit: #then we need to prune
             sorted_tgtRules = sorted(countDict[src_rule], key=countDict[src_rule].get, reverse=True)
             rules_to_filter = sorted_tgtRules[limit:]            
+            original_count = len(countDict[src_rule])
             for rule in rules_to_filter:
                 paramDict[src_rule].pop(rule) #remove it from the parameter srcDict
                 countDict[src_rule].pop(rule) #remove it from the count srcDict
             if len(rules_to_filter) > 0: #N.B.: need to update this to output the correct number
-                sys.stderr.write("Source RHS: %s; out of %d rules, filtered %d\n"%(src_rule, len(countDict[src_rule]), len(rules_to_filter)))
+                sys.stderr.write("Source RHS: %s; out of %d rules, filtered %d\n"%(src_rule, original_count, len(rules_to_filter)))
 
 '''
 estimate the start of sentence parameters; we loop

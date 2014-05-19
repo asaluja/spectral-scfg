@@ -17,11 +17,14 @@ def main():
     numTotal = 0
     for line in sys.stdin:
         numTotal += 1
-        logp = float(line.strip().split(':')[1])
-        if logp > 0:
-            numValid += 1
-            corpus_ll += -logp
-    ppl = math.exp(-corpus_ll/numValid)
+        vals = line.strip().split(':')
+        if vals[1] != '':
+            logp = float(vals[1])
+            if logp > 0:
+                numValid += 1
+                corpus_ll += logp    
+    ppl = math.exp(corpus_ll/numValid)
+    print "Conditional LL of reference: %.3f"%corpus_ll
     print "Perplexity: %.3f"%ppl
     print "Reachable sentences: %d/%d"%(numValid, numTotal)
             

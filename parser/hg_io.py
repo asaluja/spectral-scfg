@@ -152,7 +152,6 @@ get the edge marginal.
 '''
 def edgeMarginals(alpha, beta, normalizer, hg, flipSign, rank, paramDict, words):
     marginals = {}
-    #sentence_marginal = 0
     flipped = False
     for edge in hg.edges_:
         head = hg.nodes_[edge.headNode] #head is an actual node
@@ -164,7 +163,6 @@ def edgeMarginals(alpha, beta, normalizer, hg, flipSign, rank, paramDict, words)
         arity = checkArity(edge.rule)
         assert arity == len(tail)
         for target_rule in paramDict[key]:
-            #src_tgt_decorated = "%s ||| %s"%(words[head.i], words[head.i]) if target_rule == "<unk>" else "%s ||| %s"%(src_decorated, decorateTgtRule(target_rule))
             src_tgt_decorated = "<unk> ||| %s"%(words[head.i]) if target_rule == "<unk>" else "%s ||| %s"%(src_decorated, decorateTgtRule(target_rule))
             lhs_src_tgt = ' ||| '.join([LHS, src_tgt_decorated])
             marginal = 0
@@ -190,16 +188,13 @@ def edgeMarginals(alpha, beta, normalizer, hg, flipSign, rank, paramDict, words)
                     return marginals, flipped
             if marginal > 0:
                 marginals[lhs_src_tgt] = marginal                
-            #if edge.headNode == hg.nodes_[-1].id: #top-level rule
-            #    sentence_marginal += marginal
-    #print "Sentence marginal through summation is %.5g"%sentence_marginal
     return marginals, flipped
                 
 def insideOutside(hg, paramDict, rank, words, flipSign, nodeMarginal):
     alpha = computeInside(hg, paramDict, rank)    #paramDict keys are 'LHS ||| src_RHS' format
     beta = computeOutside(hg, paramDict, rank, alpha)
-    g = alpha[hg.nodes_[-1].id] if rank == 0 else alpha[hg.nodes_[-1].id].dot(paramDict["Pi"]) #take alpha of the top rule, dot product it with Pi parameters
+    g = alpha[hg.nodes_[-1].id] if rank == 0 else alpha[hg.nodes_[-1].id].dot(paramDict["Pi"]) #take alpha of the top rule, dot product it with Pi parameters    
     marginals, flipped = nodeMarginals(alpha, beta, g, hg, flipSign, words) if nodeMarginal else edgeMarginals(alpha, beta, g, hg, flipSign, rank, paramDict, words)
-    return marginals, flipped #key of marginals is a decorated entire rule LHS ||| src RHS ||| tgt RHS
+    return marginals, flipped
     
 

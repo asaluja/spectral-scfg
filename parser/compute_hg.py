@@ -125,29 +125,30 @@ def computeMarginals(hg, words, outFile, lineNum):
     rankToUse = 0 if MLE else rank
     start = time.clock()
     marginals, flipped = hg_io.insideOutside(hg, paramDict, rankToUse, words, flipSign, nodeMarginal)
-    if flipped:
-        flipped_sentences.append(lineNum)
-    ioTime = time.clock() - start
-    print "marginals computed over hypergraph. time taken: %.2f sec"%(ioTime)
-    tgt_norm_marginals = None
-    src_norm_marginals = None
-    if targetNorm:
-        tgt_norm_marginals = normalizeMarginalsByTarget(marginals)
-    if sourceNorm:
-        src_norm_marginals = normalizeMarginalsBySource(marginals)        
-    fh = gzip.open(outFile, 'w')
-    for key in marginals:
-        if sourceNorm and targetNorm:
-            fh.write("%s ||| spectralEGivenF=%.3f spectralFGivenE=%.3f\n"%(key, math.log(src_norm_marginals[key]), math.log(tgt_norm_marginals[key])))
-        elif targetNorm:
-            fh.write("%s ||| spectral=%.3f\n"%(key, math.log(tgt_norm_marginals[key])))
-        elif sourceNorm: #sourceNorm only
-            fh.write("%s ||| spectral=%.3f\n"%(key, math.log(src_norm_marginals[key])))
-        else: #just regular spectral
-            #fh.write("%s ||| spectral=%.5g\n"%(key, marginals[key]))
-            fh.write("%s ||| spectral=%.3f\n"%(key, math.log(marginals[key])))
-    fh.write("[S] ||| [X_0_%d] ||| [1] ||| 0\n"%len(words)) #top level rule
-    fh.close()
+    if marginals is not None:
+        if flipped:
+            flipped_sentences.append(lineNum)
+        ioTime = time.clock() - start
+        print "marginals computed over hypergraph. time taken: %.2f sec"%(ioTime)
+        tgt_norm_marginals = None
+        src_norm_marginals = None
+        if targetNorm:
+            tgt_norm_marginals = normalizeMarginalsByTarget(marginals)
+        if sourceNorm:
+            src_norm_marginals = normalizeMarginalsBySource(marginals)        
+        fh = gzip.open(outFile, 'w')
+        for key in marginals:
+            if sourceNorm and targetNorm:
+                fh.write("%s ||| spectralEGivenF=%.3f spectralFGivenE=%.3f\n"%(key, math.log(src_norm_marginals[key]), math.log(tgt_norm_marginals[key])))
+            elif targetNorm:
+                fh.write("%s ||| spectral=%.3f\n"%(key, math.log(tgt_norm_marginals[key])))
+            elif sourceNorm: #sourceNorm only
+                fh.write("%s ||| spectral=%.3f\n"%(key, math.log(src_norm_marginals[key])))
+            else: #just regular spectral
+                #fh.write("%s ||| spectral=%.5g\n"%(key, marginals[key]))
+                fh.write("%s ||| spectral=%.3f\n"%(key, math.log(marginals[key])))
+        fh.write("[S] ||| [X_0_%d] ||| [1] ||| 0\n"%len(words)) #top level rule
+        fh.close()
 
 def normalizeMarginalsByTarget(margDict):
     sortMargDict = {}
