@@ -54,19 +54,22 @@ outDir = args[4]
 '''
 declaration of list that maintains which sentences have failed across all processes
 '''
-def init(fs):
-    global failed_sentences
+def init(fs, fls):
+    global failed_sentences, flipped_sentences
     failed_sentences = fs
+    flipped_sentences = fls
 
 def main():
     failed_sentences = mp.Manager().list()
-    pool = mp.Pool(processes=numProcesses, initializer=init, initargs=(failed_sentences,))
+    flipped_sentences = mp.Manager().list()
+    pool = mp.Pool(processes=numProcesses, initializer=init, initargs=(failed_sentences, flipped_sentences))
     for i, line in enumerate(inputFile):
         #parse(line.strip().split(), "%s/grammar.%d.gz"%(outDir, i), i)
         pool.apply_async(parse, (line.strip().split(), "%s/grammar.%d.gz"%(outDir, i), i))
     pool.close()
     pool.join()
     print "number of failed sentences: %d"%(len(failed_sentences))
+    print "number of flipped sentences: %d"%(len(flipped_sentences))
 
 '''
 main function for bottom-up parser with Earley-style rules. 
@@ -110,10 +113,10 @@ def parse(words, outFile, lineNum):
     if "debug" in optsDict:
         printHGDebug(hg, lineNum)
     elif goal_idx:
-        computeMarginals(hg, words, outFile)
+        computeMarginals(hg, words, outFile, lineNum)
     sys.stdout.flush()
 
-def computeMarginals(hg, words, outFile):
+def computeMarginals(hg, words, outFile, lineNum):
     flipSign = "flipSign" in optsDict
     nodeMarginal = "nodeMarginal" in optsDict
     sourceNorm = "sourceNorm" in optsDict
@@ -121,27 +124,31 @@ def computeMarginals(hg, words, outFile):
     MLE = "MLE" in optsDict
     rankToUse = 0 if MLE else rank
     start = time.clock()
-    marginals = hg_io.insideOutside(hg, paramDict, rankToUse, words, flipSign, nodeMarginal)
-    ioTime = time.clock() - start
-    print "marginals computed over hypergraph. time taken: %.2f sec"%(ioTime)
-    tgt_norm_marginals = None
-    src_norm_marginals = None
-    if targetNorm:
-        tgt_norm_marginals = normalizeMarginalsByTarget(marginals)
-    if sourceNorm:
-        src_norm_marginals = normalizeMarginalsBySource(marginals)        
-    fh = gzip.open(outFile, 'w')
-    for key in marginals:
-        if sourceNorm and targetNorm:
-            fh.write("%s ||| spectralEGivenF=%.3f spectralFGivenE=%.3f\n"%(key, math.log(src_norm_marginals[key]), math.log(tgt_norm_marginals[key])))
-        elif targetNorm:
-            fh.write("%s ||| spectral=%.3f\n"%(key, math.log(tgt_norm_marginals[key])))
-        elif sourceNorm: #sourceNorm only
-            fh.write("%s ||| spectral=%.3f\n"%(key, math.log(src_norm_marginals[key])))
-        else: #just regular spectral
-            fh.write("%s ||| spectral=%.3f\n"%(key, math.log(marginals[key])))
-    fh.write("[S] ||| [X_0_%d] ||| [1] ||| 0\n"%len(words)) #top level rule
-    fh.close()
+    marginals, flipped = hg_io.insideOutside(hg, paramDict, rankToUse, words, flipSign, nodeMarginal)
+    if marginals is not None:
+        if flipped:
+            flipped_sentences.append(lineNum)
+        ioTime = time.clock() - start
+        print "marginals computed over hypergraph. time taken: %.2f sec"%(ioTime)
+        tgt_norm_marginals = None
+        src_norm_marginals = None
+        if targetNorm:
+            tgt_norm_marginals = normalizeMarginalsByTarget(marginals)
+        if sourceNorm:
+            src_norm_marginals = normalizeMarginalsBySource(marginals)        
+        fh = gzip.open(outFile, 'w')
+        for key in marginals:
+            if sourceNorm and targetNorm:
+                fh.write("%s ||| spectralEGivenF=%.3f spectralFGivenE=%.3f\n"%(key, math.log(src_norm_marginals[key]), math.log(tgt_norm_marginals[key])))
+            elif targetNorm:
+                fh.write("%s ||| spectral=%.3f\n"%(key, math.log(tgt_norm_marginals[key])))
+            elif sourceNorm: #sourceNorm only
+                fh.write("%s ||| spectral=%.3f\n"%(key, math.log(src_norm_marginals[key])))
+            else: #just regular spectral
+                #fh.write("%s ||| spectral=%.5g\n"%(key, marginals[key]))
+                fh.write("%s ||| spectral=%.3f\n"%(key, math.log(marginals[key])))
+        fh.write("[S] ||| [X_0_%d] ||| [1] ||| 0\n"%len(words)) #top level rule
+        fh.close()
 
 def normalizeMarginalsByTarget(margDict):
     sortMargDict = {}
