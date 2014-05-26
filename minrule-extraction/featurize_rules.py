@@ -25,10 +25,16 @@ of tree_to_rule.py (tool to convert ZGC minimal grammar extractor output to inpu
 or a format that cdec can read in).  
 -s: write out a per sentence grammar.  This is done by default if -m is one.  -f and -s cannot be on 
 together, because we need to aggregate information. 
+Update (May 19, 2014): added functionality to read in counts and compute features. 
 '''
 
-import sys, commands, string, gzip, os, getopt, re
+import sys, commands, string, gzip, os, getopt, re, cPickle, math
 import multiprocessing as mp
+import cdec.configobj
+import cdec.sa
+
+countDict = None
+MAXSCORE=99
 
 def process_hiero_rules(filehandle):
     hiero_rules = {}
@@ -72,13 +78,14 @@ def removeSpanInfo(elements):
 
 def filterRules(countDict, limit):
     srcTgtDict = {}
-    for key in countDict.keys(): #first, need to reprocess countDict
-        elements = key.split(' ||| ')
-        srcKey = ' ||| '.join(elements[:2])
-        tgtKey = elements[2]
-        srcCountDict = srcTgtDict[srcKey] if srcKey in srcTgtDict else {}
-        srcCountDict[tgtKey] = countDict[key]
-        srcTgtDict[srcKey] = srcCountDict
+    #for key in countDict.keys(): #first, need to reprocess countDict
+    #    elements = key.split(' ||| ')
+    #    srcKey = ' ||| '.join(elements[:2])
+    #    tgtKey = elements[2]
+    #    srcCountDict = srcTgtDict[srcKey] if srcKey in srcTgtDict else {}
+    #    srcCountDict[tgtKey] = countDict[key]
+    #    srcTgtDict[srcKey] = srcCountDict
+    srcTgtDict = countDict
     for srcKey in srcTgtDict:
         numTgtRules = len(srcTgtDict[srcKey])
         if numTgtRules > limit: #then we need to filter rules
@@ -91,76 +98,135 @@ def filterRules(countDict, limit):
     return srcTgtDict
 
 def computeFeatures(ruleToPrint):
-    x = 2
+    elements = ruleToPrint.split(' ||| ')
+    outputStr = ""
+    srcKey = ' ||| '.join(elements[:2])
+    tgtKey = elements[2]
+    if srcKey in countDict and tgtKey in countDict[srcKey]:
+        normalizer = sum([countDict[srcKey][tgtKey] for tgtKey in countDict[srcKey]])
+        jointCount = countDict[srcKey][tgtKey]
+        EgivenF = -math.log10(jointCount / float(normalizer))
+        outputStr += " EgivenF=-0.0" if EgivenF == 0 else " EgivenF=%.11f"%EgivenF
+        CountF = math.log10(normalizer)
+        outputStr += " SampleCountF=%.11f"%CountF
+        CountEF = math.log10(jointCount)
+        outputStr += " CountEF=%.11f"%CountEF
+        IsSingletonF = 1 if normalizer == 1 else 0
+        IsSingletonFE = 1 if jointCount == 1 else 0
+        outputStr += " IsSingletonF=%d"%IsSingletonF
+        outputStr += " IsSingletonFE=%d"%IsSingletonFE
+    return outputStr
 
-def decorateSentenceGrammar(minRule_file, hiero_file, out_file, featureStr, optDict):
+def maxLexEgivenF(fwords, ewords, ttable):
+    local_f = fwords + ['NULL']
+    maxOffScore = 0.0
+    for e in ewords:
+        maxScore = max(ttable.get_score(f, e, 0) for f in local_f)
+        maxOffScore += -math.log10(maxScore) if maxScore > 0 else MAXSCORE
+    return maxOffScore
+
+def maxLexFgivenE(fwords, ewords, ttable):
+    local_e = ewords + ['NULL'] 
+    maxOffScore = 0.0
+    for f in fwords:
+        maxScore = max(ttable.get_score(f, e, 1) for e in local_e)
+        maxOffScore += -math.log10(maxScore) if maxScore > 0 else MAXSCORE
+    return maxOffScore
+
+def stripNTs(phrase):
+    words = []
+    expr = re.compile(r'\[([^]]*)\]')
+    for item in phrase.split():
+        if not expr.match(item):
+            words.append(item)
+    return words
+
+def computeLexicalScores(model_loc, rules_list):
+    tt = cdec.sa.BiLex(from_binary=model_loc)    
+    new_rules = []
+    for rule in rules_list:
+        new_rule = rule
+        elements = rule.split(' ||| ')
+        if elements[0] != "[S]": #should only occur in marginal setting; if true, then just pass the rule through
+            features_list = [featPair.split('=')[0] for featPair in elements[3].split()]
+            if "MaxLexEgivenF" not in features_list and "MaxLexFgivenE" not in features_list: #otherwise, we have already computed these features
+                srcPhrase = elements[1]
+                tgtPhrase = elements[2]            
+                srcWords = stripNTs(srcPhrase)
+                tgtWords = stripNTs(tgtPhrase)
+                if len(srcWords) > 0: 
+                    f_given_e = maxLexFgivenE(srcWords, tgtWords, tt)                
+                    new_rule += " MaxLexFgivenE=%.11f"%f_given_e
+                if len(tgtWords) > 0:
+                    e_given_f = maxLexEgivenF(srcWords, tgtWords, tt)
+                    new_rule += " MaxLexEgivenF=%.11f"%e_given_f
+        new_rules.append(new_rule)
+    return new_rules            
+
+def decorateSentenceGrammar(minRule_file, hiero_file, out_file, lex_model, optDict):
         hiero_fh = gzip.open(hiero_file, 'rb')
         hiero_rules = process_hiero_rules(hiero_fh)
-        out_fh = None
+        hiero_fh.close()        
         perSent = "perSentence" in optDict
         marginal = "marginal" in optDict
-        if perSent or marginal:
-            out_fh = gzip.open(out_file, 'w')
         numRulesInHiero = 0
         numRulesTotal = 0
         if os.path.isfile(minRule_file):
+            rules_output = []
             minrule_fh = gzip.open(minRule_file, 'rb')
-            for rule in minrule_fh:
+            for rule in minrule_fh:                                
                 numRulesTotal += 1
                 elements = rule.strip().split(' ||| ')
-                noLex = False
-                key = ' ||| '.join(elements[:3])
-                if marginal:
-                    key, noLex = removeSpanInfo(elements[:3])
-                ruleToPrint = rule.strip() #assumption is that rule will be of the form a ||| b ||| c |||
-                if elements[1] == "<unk>":
-                    ruleToPrint = "%s ||| %s ||| %s ||| %s PassThrough=1"%(elements[0], elements[2], elements[2], elements[3])           
-                if key in hiero_rules:
-                    numRulesInHiero += 1
-                    ruleToPrint += hiero_rules[key]
-                else:
-                    ruleToPrint += " minRule=1.0 "
-                    if not noLex: #if featurizing without marginals, then we only read in noLex items so its true; otherwise, determined above
-                        ruleToPrint += computeFeatures(ruleToPrint)
-                if marginal and noLex:
-                    assert key not in hiero_rules #if not lexical, key should never be in hiero rules
-                    line_out += " Glue=1.0"
-                    ntNumbers = [int(ntIdx) for ntIdx in re.findall(r'\[([^]]*)\]', elements[2])]
-                    if len(ntNumbers) == 2 and (ntNumbers[0] > ntNumbers[1]):                        
-                        line_out += " Inverse=1.0"
-                if marginal:
-                    if elements[0] == '[S]': #reached the end, so we should close? 
-                        out_fh.write("%s ||| 0\n"%(' ||| '.join(elements[:3])))
-                        out_fh.close()
-                    else:
-                        out_fh.write("%s\n"%line_out)
-                else:
-                    if "perSentence" in optDict:
-                        out_fh.write("%s\n"%line_out)
-                    else: #maintain a count of each src_tgt rule
-                        seen_rules.append(line_out)
-                        srcTgtCount = countDict[key] if key in countDict else 0
-                        countDict[key] = srcTgtCount + 1
+                if elements[0] == "[S]" and marginal: #if top level rule, just append as is
+                    rules_output.append("%s ||| 0"%(' ||| '.join(elements[:3])))
+                else: #need to featurize, first do it phrasally
+                    noLex = False
+                    key = ' ||| '.join(elements[:3])
+                    if marginal: #marginals have additional space information
+                        key, noLex = removeSpanInfo(elements[:3])
+                    ruleToPrint = rule.strip() if marginal else rule.strip() + " |||"#assumption is that rule will be of the form a ||| b ||| c |||
+                    if elements[1] == "<unk>":
+                        ruleToPrint = "%s ||| %s ||| %s ||| %s PassThrough=1"%(elements[0], elements[2], elements[2], elements[3])
+                    if key in hiero_rules: #then get the features from hiero
+                        numRulesInHiero += 1
+                        ruleToPrint += " %s"%hiero_rules[key]
+                    else: #we use counts to compute our own feature values
+                        if not noLex: #if featurizing without marginals, then we only read in noLex items so its true; otherwise, determined above
+                            ruleToPrint += " minRule=1.0" #minRule only feature                            
+                            ruleToPrint += computeFeatures(key) 
+                    if marginal and noLex: #[X1] [X2] rule
+                        assert key not in hiero_rules #if not lexical, key should never be in hiero rules
+                        ruleToPrint += " Glue=1.0"
+                        ntNumbers = [int(ntIdx) for ntIdx in re.findall(r'\[([^]]*)\]', elements[2])]
+                        if len(ntNumbers) == 2 and (ntNumbers[0] > ntNumbers[1]):                        
+                            ruleToPrint += " Inverse=1.0"
+                    rules_output.append(ruleToPrint)        
             minrule_fh.close()
+            if marginal or perSent:
+                new_rules = computeLexicalScores(lex_model, rules_output)
+                out_fh = gzip.open(out_file, 'w')
+                for ruleToPrint in new_rules:
+                    out_fh.write("%s\n"%ruleToPrint)
+            else:
+                seen_rules.extend(rules_output)  #global write
             print "for grammar %s, out of %d rules, %d are also in hiero"%(minRule_file, numRulesTotal, numRulesInHiero)
         else:
-            print "could not find minrule grammar for sentence number %d, taking hiero grammar instead"%(sentNum)
+            print "could not find minrule grammar, taking hiero grammar instead:%s"%hiero_file
             for key in hiero_rules:
-                out_fh.write("%s ||| spectral=0.0 DeletionRule=0.0 %s\n"%(key, hiero_rules[key]))
-        hiero_fh.close()
+                out_fh.write("%s ||| spectral=0.0 %s\n"%(key, hiero_rules[key]))
         if perSent and not marginal: #add the NT only rules, but only if we're not reading in marginals (since we already have the NT rules), then close
-            out_fh.write("[X] ||| [X,1] [X,2] ||| [X,1] [X,2] ||| DeletionRule=1.0 Glue=1 %s\n"%featureStr)
-            out_fh.write("[X] ||| [X,1] [X,2] ||| [X,2] [X,1] ||| DeletionRule=1.0 Glue=1 Inverse=1 %s\n"%featureStr)            
-            out_fh.write("[S] ||| [X,1] ||| [X,1] ||| 0\n") #no features defined on the top-level rule, just for parsing completion purposes
+            out_fh.write("[X] ||| [X,1] [X,2] ||| [1] [2] ||| Glue=1\n")
+            out_fh.write("[X] ||| [X,1] [X,2] ||| [2] [1] ||| Glue=1 Inverse=1\n")            
+            out_fh.write("[S] ||| [X,1] ||| [1] ||| 0\n") #no features defined on the top-level rule, just for parsing completion purposes
             out_fh.close()
 
 
-def init(sr, cd):
-    global seen_rules, countDict
+def init(sr):
+    global seen_rules
     seen_rules = sr
-    countDict = cd
 
 def main():
+    global countDict    
     optDict = {}
     (opts, args) = getopt.getopt(sys.argv[1:], 'f:ms')
     for opt in opts:
@@ -176,43 +242,43 @@ def main():
     minRule_grammars_loc = args[0]
     hiero_grammars_loc = args[1]
     outFile_loc = args[2]
-    numProcesses = int(args[3])
+    countDict = cPickle.load(open(args[3], 'rb')) #load counts for feature computation
+    lex_model = args[4]
+    numProcesses = int(args[5])
+    
     minRule_grammars = os.listdir(minRule_grammars_loc)
-    hiero_grammars = os.listdir(hiero_grammars_loc)        
-    features = extractFeatureList(hiero_grammars_loc + hiero_grammars[0])
-    featureStr = ' '.join(["%s=0.0"%(feature) for feature in features])
     seen_rules = None
-    countDict = None
     pool = None
     if "marginal" not in optDict:
         seen_rules = mp.Manager().list()
-        countDict = mp.Manager().dict()
-        pool = mp.Pool(processes=numProcesses, initializer=init, initargs=(seen_rules, countDict))
+        pool = mp.Pool(processes=numProcesses, initializer=init, initargs=(seen_rules,))
     else:
         pool = mp.Pool(numProcesses)
     for minRule_file in minRule_grammars:
-        pool.apply_async(decorateSentenceGrammar, (minRule_grammars_loc + minRule_file, hiero_grammars_loc + minRule_file, outFile_loc + minRule_file, featureStr, optDict))    
+        #decorateSentenceGrammar(minRule_grammars_loc + minRule_file, hiero_grammars_loc + minRule_file, outFile_loc + minRule_file, lex_model, optDict)
+        pool.apply_async(decorateSentenceGrammar, (minRule_grammars_loc + minRule_file, hiero_grammars_loc + minRule_file, outFile_loc + minRule_file, lex_model, optDict))    
     pool.close()
-    pool.join()
+    pool.join()                             
 
     if "marginal" not in optDict:
         print "number of rules seen: %d"%len(seen_rules)
-        if "perSentence" not in optDict:
+        if "perSentence" not in optDict:                                 
             output_fh = gzip.open(outFile_loc, 'wb')
             seen_rules_uniq = list(set(seen_rules))
+            new_rules = computeLexicalScores(lex_model, seen_rules_uniq)
             if "filterRules" in optDict:
                 filteredDict = filterRules(countDict, optDict["filterRules"])            
-                for rule in seen_rules_uniq:
+                for rule in new_rules:
                     srcKey = ' ||| '.join(rule.split(' ||| ')[:2])
                     tgtKey = rule.split(' ||| ')[2]
                     if tgtKey in filteredDict[srcKey]: #i.e., we haven't pruned it away
                         output_fh.write("%s\n"%(rule))
             else:
-                for rule in seen_rules_uniq:
+                for rule in new_rules:
                     output_fh.write("%s\n"%(rule))
-            output_fh.write("[X] ||| [X] [X] ||| [1] [2] ||| DeletionRule=1.0 Glue=1 %s\n"%featureStr)
-            output_fh.write("[X] ||| [X] [X] ||| [2] [1] ||| DeletionRule=1.0 Glue=1 Inverse=1 %s\n"%featureStr)        
-            output_fh.write("[S] ||| [X] ||| [1] ||| 0\n") #no features defined on the top-level rule, just for parsing completion purposes
+            output_fh.write("[X] ||| [X,1] [X,2] ||| [1] [2] ||| Glue=1\n")
+            output_fh.write("[X] ||| [X,1] [X,2] ||| [2] [1] ||| Glue=1 Inverse=1\n")        
+            output_fh.write("[S] ||| [X,1] ||| [1] ||| 0\n") #no features defined on the top-level rule, just for parsing completion purposes
             output_fh.close()
 
 if __name__ == "__main__":

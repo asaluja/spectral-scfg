@@ -17,18 +17,19 @@ def main():
     numTotal = 0
     for line in sys.stdin:
         numTotal += 1
-        vals = line.strip().split(':')
+        vals = line.strip().split(': ')
         if vals[1] != '':
-            logp = float(vals[1])
+            logp = float(vals[1].split('|')[0])
+            normalizer = float(vals[1].split('|')[1])
+            normalized = logp - normalizer
             if logp > 0:
                 numValid += 1
-                corpus_ll += logp    
-    ppl = math.exp(corpus_ll/numValid)
+                corpus_ll += normalized
+    ppl = math.exp(-corpus_ll/numValid)
     print "Conditional LL of reference: %.3f"%corpus_ll
-    print "Perplexity: %.3f"%ppl
+    print "Perplexity: %.5g"%ppl
     print "Reachable sentences: %d/%d"%(numValid, numTotal)
-            
-            
+
 
 if __name__ == "__main__":
     main()

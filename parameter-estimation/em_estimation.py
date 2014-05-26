@@ -114,7 +114,7 @@ this function implements Matsuzaki initialization.
 Explain Matsuzaki initialization here. 
 '''
 def InitCountsMatsuzaki(training_tree, rank, mle_params):
-    a = math.log(-3)
+    a = -math.log(3)
     b = math.log(3)
     AddCounts(training_tree.rule)
     if training_tree.rule not in params:
@@ -134,6 +134,7 @@ def InitCountsMatsuzaki(training_tree, rank, mle_params):
             else:
                 sys.stderr.write("Rule %s has more than 2 NTs, not included in parameter dictionary\n"%training_tree.rule)
             if unnormalized is not None:
+                unnormalized = np.exp(unnormalized)
                 unnormalized *= mle
                 params[training_tree.rule] = NormalizeParam(unnormalized)
     for child in training_tree.children:
@@ -276,9 +277,10 @@ def AddOOVParameter(rank, matsu, mle_params):
         srcKey = "[X] ||| <unk>"
         tgtKey = "<unk>"
         mle_param = mle_params[srcKey][tgtKey]
-        a = math.log(-3)
+        a = -math.log(3)
         b = math.log(3)    
         unnormalized = (b-a)*np.random.random_sample((rank,))+a
+        unnormalized = np.exp(unnormalized)
         unnormalized *= mle_param
     else:
         unnormalized = np.random.random_sample((rank,))
@@ -286,17 +288,25 @@ def AddOOVParameter(rank, matsu, mle_params):
 
 def WriteOutParameters(filename, isFilter, filteredRules):
     param_writeout = {}
-    for param in params:
-        srcKey = ' ||| '.join(param.split(' ||| ')[:-1])
-        tgtKey = param.split(' ||| ')[-1]
-        srcDict = param_writeout[srcKey] if srcKey in param_writeout else {}
-        if isFilter:
-            if srcKey in filteredRules and tgtKey in filteredRules[srcKey]:
+    num_params = 0
+    for param in params: #unk not in params??
+        if param != "Pi":
+            srcKey = ' ||| '.join(param.split(' ||| ')[:-1])
+            tgtKey = param.split(' ||| ')[-1]
+            srcDict = param_writeout[srcKey] if srcKey in param_writeout else {}
+            if isFilter:
+                if srcKey in filteredRules and tgtKey in filteredRules[srcKey]:
+                    srcDict[tgtKey] = params[param]
+                    num_params += 1
+                    param_writeout[srcKey] = srcDict
+            else:
                 srcDict[tgtKey] = params[param]
+                num_params += 1
                 param_writeout[srcKey] = srcDict
         else:
-            srcDict[tgtKey] = params[param]
-            param_writeout[srcKey] = srcDict
+            param_writeout["Pi"] = params[param]
+            num_params += 1
+    print "Writing out %d parameters (after potential filtering)"%num_params
     cPickle.dump(param_writeout, open(filename, "wb"))
             
 def main():
@@ -315,7 +325,7 @@ def main():
     minrule_grammars_loc = args[0]
     rank = int(args[1])
     if "numProc" not in optsDict:
-        optsDict["numProc"] = 4 #default value for numProc
+        optsDict["numProc"] = 1 #default value for numProc
 
     numSentences = len(os.listdir(minrule_grammars_loc))
     training_examples = [] #list of trees
@@ -328,12 +338,12 @@ def main():
         else:
             sys.stderr.write("Training example %d has invalid tree (contains rule with # NTs on RHS > 2)\n"%lineNum)
     timeTaken = time.clock() - start
-    print "Read in training tree examples.  Time taken: %.3f sec"%timeTaken
+    print "Read in %d training tree examples.  Time taken: %.3f sec"%(len(training_examples), timeTaken)    
 
     params = {}
     mle_params = None
     if "Matsuzaki" in optsDict:
-        params_fh = open(mleloc, 'rb')
+        params_fh = open(optsDict["Matsuzaki"], 'rb')
         mle_params = cPickle.load(params_fh)
     start = time.clock()
     for training_tree in training_examples: #only loops through valid rules
@@ -344,18 +354,17 @@ def main():
     params["Pi"] = NormalizeParam(np.random.random_sample((rank,)))    
     if "OOV" in optsDict:
         AddOOVParameter(rank, "Matsuzaki" in optsDict, mle_params)
-        if "Matsuzaki" not in optsDict: #then need to remove singletons from params (added in InitCounts)
-            for param in params.keys():
-                if param != "Pi" and param != "[X] ||| <unk> ||| <unk>" and CheckArity(param) == 0 and counts[param] == 1:
-                    del params[param]
+        for param in params.keys():
+            if param != "Pi" and param != "[X] ||| <unk> ||| <unk>" and CheckArity(param) == 0 and counts[param] == 1:
+                del params[param]
     else:
         params["[X] ||| <unk> ||| <unk>"] = np.zeros((rank,))
     timeTaken = time.clock() - start
-    print "Initialized parameters for rules in training corpus.  Time taken: %.3f sec"%timeTaken
+    print "Initialized %d parameters for rules in training corpus.  Time taken: %.3f sec"%(len(params), timeTaken)
 
     filteredRules = None
     if "filter" in optsDict:
-        filtered_rules = cPickle.load(open(optsDict["filter"], 'rb'))
+        filteredRules = cPickle.load(open(optsDict["filter"], 'rb'))
     numIters = int(args[2])
     outDir = args[3]
     start = time.clock()
@@ -365,7 +374,14 @@ def main():
         print "Iteration %d: E-step completed; computed partial counts and updated parameters"%(iterNum+1)
         MaximizationStep(new_params)
         print "Iteration %d: M-step completed; normalized parameters"%(iterNum+1)
-        params = new_params #update global params parameter with new params
+        params = new_params
+        if "OOV" not in optsDict:
+            params["[X] ||| <unk> ||| <unk>"] = np.zeros((rank,))
+        #print "Pi" in params, "[X] ||| <unk>" in params
+        #for param in new_params: #update global params parameter here
+        #    if param in params:
+        #        params[param] = new_params[param]
+        print "Number of params in new params: %d"%len(new_params)
         if (iterNum + 1)%10 == 0: #write out every 10 iterations
             WriteOutParameters(outDir + "/em.iter%d.params"%iterNum, "filter" in optsDict, filteredRules)
         timeTaken = time.clock() - start_iter

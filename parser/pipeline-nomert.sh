@@ -37,10 +37,4 @@ rm -rf ${working}/rank${rank}-devtest/
 python ${scripts}/scripts/corpus2sgm.py ${working}/dec-rank${rank}-devtest/ < $testSrcTgt > ${working}/devtest.sgm
 rm ${working}/devtest.src
 
-#MERT tuning
-~/tools/cdec/training/dpmert/dpmert.pl --config $config --devset ${working}/dev.sgm --output-dir ${working}/rank${rank}.mert --weights ${working}/mert.weights.mg-final --jobs $numProc
-
-#evaluation
-~/tools/cdec/training/utils/decode-and-evaluate.pl --jobs $numProc --input ${working}/dev.sgm --config $config --weights ${working}/rank${rank}.mert/weights.final &> rank${rank}.dev.bleu
-~/tools/cdec/training/utils/decode-and-evaluate.pl --jobs $numProc --input ${working}/devtest.sgm --config $config --weights ${working}/rank${rank}.mert/weights.final &> rank${rank}.devtest.bleu
 

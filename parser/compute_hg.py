@@ -20,6 +20,12 @@ Usage: python intersect_scfg.py (-d/f/n) SpectralParams SentencesToDecode NumPar
 Update: incorporated python's multiprocessing setup, much more efficient than the
 previous multiprocessing setup.  
 Usage: python intersect_scfg.py (-d/-f/-n) SpectralParams Rank InputFile NumProcesses outDir/
+Update (May 20,m 2014): renamed the directory from 'inside-outside' to 'parser', and also 
+renamed this file from 'intersect_scfg.py' to 'compute_hg.py'.  Changed writing out of the marginals,
+instead of log marginals previously we have raw marginals.  Also, there is now an option to write
+out multiple spectral marginals (normalized by source or target). 
+Lastly, included an additional option flag to generate heat maps of the parse chart. 
+Usage: python compute_hg.py (-d/-f/-n/-m/-s/-t) params rank input_sentences numProc outDir/
 '''
 
 import sys, commands, string, time, gzip, cPickle, re, getopt, math, hg_io
@@ -32,7 +38,7 @@ for opt in opts:
     if opt[0] == '-d': #print info about each node in the hypergraph 
         optsDict["debug"] = 1
     elif opt[0] == '-n': #by default, we print edge marginal
-        optsDict["nodeMarginal"] = 1
+        optsDict["nodeMarginal"] = 1 #if true, we print out heat maps
     elif opt[0] == '-f': #if marginal is < 0, we flip the sign
         optsDict["flipSign"] = 1
     elif opt[0] == '-m': #MLE 
@@ -130,6 +136,7 @@ def computeMarginals(hg, words, outFile, lineNum):
             flipped_sentences.append(lineNum)
         ioTime = time.clock() - start
         print "marginals computed over hypergraph. time taken: %.2f sec"%(ioTime)
+        #add here: if node marginal then we plot heat map
         tgt_norm_marginals = None
         src_norm_marginals = None
         if targetNorm:
@@ -138,15 +145,12 @@ def computeMarginals(hg, words, outFile, lineNum):
             src_norm_marginals = normalizeMarginalsBySource(marginals)        
         fh = gzip.open(outFile, 'w')
         for key in marginals:
-            if sourceNorm and targetNorm:
-                fh.write("%s ||| spectralEGivenF=%.3f spectralFGivenE=%.3f\n"%(key, math.log(src_norm_marginals[key]), math.log(tgt_norm_marginals[key])))
-            elif targetNorm:
-                fh.write("%s ||| spectral=%.3f\n"%(key, math.log(tgt_norm_marginals[key])))
-            elif sourceNorm: #sourceNorm only
-                fh.write("%s ||| spectral=%.3f\n"%(key, math.log(src_norm_marginals[key])))
-            else: #just regular spectral
-                #fh.write("%s ||| spectral=%.5g\n"%(key, marginals[key]))
-                fh.write("%s ||| spectral=%.3f\n"%(key, math.log(marginals[key])))
+            featureStr = "%s ||| spectral=%.5g"%(key, marginals[key])
+            if sourceNorm:
+                featureStr += " spectralEgivenF=%.5g"%src_norm_marginals[key]
+            if targetNorm:
+                featureStr += " spectralFgivenE=%.5g"%tgt_norm_marginals[key]
+            fh.write("%s\n"%featureStr)
         fh.write("[S] ||| [X_0_%d] ||| [1] ||| 0\n"%len(words)) #top level rule
         fh.close()
 

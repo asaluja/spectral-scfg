@@ -16,7 +16,7 @@ Arg4: output directory
 Usage: 
 '''
 
-import sys, commands, string, os, gzip
+import sys, commands, string, os, gzip, re
 
 def ProcessInvalidRules(filename):
     invalid_rules = {}
@@ -25,7 +25,28 @@ def ProcessInvalidRules(filename):
         sentNum = int(sentNum_Str.split()[1])
         invalid_rules[sentNum] = 1
     return invalid_rules
-    
+
+def ReformatRule(rule):
+    elements = rule.split(' ||| ')
+    expr = re.compile(r'\[([^]]+)\]')
+    new_src = []
+    NT_counter = 1
+    for item in elements[1].split():
+        if expr.match(item):
+            new_src.append("[X,%d]"%NT_counter)
+            NT_counter += 1
+        else:
+            new_src.append(item)
+    new_src_str = ' '.join(new_src)
+    new_tgt = []
+    for item in elements[2].split():
+        if expr.match(item):
+            NT_counter = int(re.findall(expr, item)[0])
+            new_tgt.append("[X,%d]"%NT_counter)
+        else:
+            new_tgt.append(item)
+    new_tgt_str = ' '.join(new_tgt)
+    return ' ||| '.join([elements[0], new_src_str, new_tgt_str])
 
 def main():
     invalid_rules = ProcessInvalidRules(sys.argv[1])
@@ -39,7 +60,8 @@ def main():
         fh_in = gzip.open(file_to_copy, 'rb')
         fh_out = gzip.open(out_filename, 'w')
         for rule in fh_in:
-            fh_out.write("%s"%rule)
+            rule_format = ReformatRule(rule.strip()) if x in invalid_rules else rule.strip()
+            fh_out.write("%s\n"%rule_format)
         fh_out.close()
         fh_in.close()
 

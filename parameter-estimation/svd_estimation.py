@@ -125,7 +125,6 @@ def main():
         sys.stderr.write("Filtered rules to keep top %d per source RHS.  Time taken: %.3f sec\n"%(featBinDict["filterRules"], timeTaken))
     if "MLE" in featBinDict: #if we are just dealing with MLE estimates, then write them out directly
         start = time.clock()
-        cPickle.dump(countDict, open(featBinDict["MLE"], "wb"))
         normalizeCountDict(countDict)
         cPickle.dump(countDict, open(args[3], "wb"))
         timeTaken = time.clock() - start

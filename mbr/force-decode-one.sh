@@ -11,7 +11,7 @@ y=$(($x + 1))
 zcat $grammarFile | ${scriptLoc}/convert-to-target-grammar.pl | ~/tools/cdec/training/utils/grammar_convert > ${working}/${x}.hg
 head -$y  $parallel | tail -1 | ~/tools/cdec/corpus/cut-corpus.pl 2 > ${working}/ref.${x}
 
-paste ${working}/${x}.hg ${working}/ref.${x} | perl -e 'while(<>){s/\t/ ||| /;print;}' | ~/tools/cdec/decoder/cdec -z -f rescore -w ${working}/weights.txt
+paste ${working}/${x}.hg ${working}/ref.${x} | perl -e 'while(<>){s/\t/ ||| /;print;}' | ~/tools/cdec/decoder/cdec -z -f rescore -w ${working}/weights.txt -X 5 --show_conditional_prob
 rm ${working}/${x}.hg
 rm ${working}/ref.${x}
 

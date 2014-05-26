@@ -16,12 +16,14 @@ seqLimit=$(($numFiles-1))
 seq 0 $seqLimit | xargs  -i --max-procs=$max_jobs bash -c "${scriptLoc}/force-decode-slave.sh $working $parallel $grammarLoc {}; echo {} done"
 wait
 for (( i = 0; i < $numFiles; i++ )); do
+    norm=`grep 'Partition         log(Z)' ${working}/${i}.ll | cut -d':' -f2 | sed 's/^[[:space:]]*//'`
     unreachable=`grep 'REFERENCE UNREACHABLE' ${working}/${i}.ll | wc -l`
     if [[ $unreachable -eq 1 ]]; then
-	echo "logp: 0" >> $outputFile
+	echo "LL: 0|$norm" >> $outputFile
     else
-	logp=`grep 'Constr. forest  Viterbi logp' ${working}/${i}.ll | cut -d':' -f2 | sed 's/^[[:space:]]*//'`
-	echo "logp: $logp" >> $outputFile
+	#logp=`grep 'Constr. forest  Viterbi logp' ${working}/${i}.ll | cut -d':' -f2 | sed 's/^[[:space:]]*//'`
+	logp=`grep 'Contst. partition  log(Z)'  ${working}/${i}.ll | cut -d':' -f2 | sed 's/^[[:space:]]*//'`	
+	echo "LL: $logp|$norm" >> $outputFile
     fi
     rm ${working}/${i}.ll
 done
