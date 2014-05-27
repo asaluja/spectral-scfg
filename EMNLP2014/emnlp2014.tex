@@ -77,7 +77,7 @@
 % smaller than 5cm (the original size); we will check this
 % in the camera-ready version and ask you to change it back.
 %\setlength\titlebox{5cm} %for expanding the title box
-\title{Latent Synchronous CFGs for Hierarchical Phrase-based Translation}
+\title{Latent Synchronous CFGs for Hierarchical Translation}
 
 %\author{First Author \\
 %  Affiliation / Address line 1 \\
@@ -222,19 +222,20 @@ Thus, a beneficial side effect of our refinement process is the creation of more
 
 		\hbox{(Marginals)}
 		Sentence probability $g = \balpha(\textrm{goal}) \times \bbeta(\textrm{goal})$
+		
 		For edge $e \in \mathcal{H}$, 
 			\begin{itemize}[label={},nolistsep]
 					\item head = {\bf h}(e), tail = {\bf t}(e), rule = {\bf r}(e)
-					\item if $\mu(e) = (\bbeta(\textrm{head}) \times_0 C^{\textrm{rule}}) / g$
-					\item else if $|$tail$| = 2$, then $\mu(e) = (\bbeta(\textrm{head}) \times_0 C^{\textrm{rule}} \times_2 \balpha(\textrm{tail}_1) \times_1 \balpha(\textrm{tail}_0) / g$
+					\item if $|$tail$| = 0$, then $\mu(e) = (\bbeta(\textrm{head}) \times_0 C^{\textrm{rule}}) / g$
 					\item else if $|$tail$| = 1$, then $\mu(e) = (\bbeta(\textrm{head}) \times_0 C^{\textrm{rule}} \times_1 \balpha(\textrm{tail}_0)) / g$
+					\item else if $|$tail$| = 2$, then $\mu(e) = (\bbeta(\textrm{head}) \times_0 C^{\textrm{rule}} \times_2 \balpha(\textrm{tail}_1) \times_1 \balpha(\textrm{tail}_0)) / g$					
 			\end{itemize}
 }}
 \end{footnotesize}
 \caption{The tensor form of the hypergraph inside-outside algorithm, for calculation of rule marginals $\mu(e)$.  
 A slight simplification in the marginal computation yields NT marginals for spans $\mu(\bX, i, j)$.
 {\bf B}(q) returns the incoming hyperedges for node $q$, and {\bf h}(e), {\bf t}(e), {\bf r}(e) return the head node, tail nodes, and rule for hyperedge $e$.} 
-\vspace{-1cm}
+\vspace{-0.8cm}
 \label{fig:hg_io_spec}
 \end{figure}
 For a parameter $t$ of rule $r$, the latent state $h_1$ attached to the LHS NT of $r$ is associated with the outside tree for the sub-tree rooted at the LHS, and the states attached to the RHS NTs are associated with the inside trees of that NT.    
@@ -264,7 +265,7 @@ We explore two methods for estimating the parameters $C^r$ of the model: a likel
 
 Figure \ref{fig:estimation-algos} presents a side-by-side comparison of the two algorithms, which we discuss in this section.  
 In the spectral approach, we base our parameter estimates on low-rank representations of moments of features, while EM explicitly maximizes a likelihood criterion. 
-The parameter estimation algorithms are relatively similar, but in lieu of sparse feature functions in the spectral case, EM used partial counts estimated with the current set of parameters.  
+The parameter estimation algorithms are relatively similar, but in lieu of sparse feature functions in the spectral case, EM uses partial counts estimated with the current set of parameters.  
 The nature of EM allows it to be susceptible to local optima, while the spectral approach comes with guarantees on obtaining the global optimum. 
 Lastly, computing the SVD and estimating parameters in the low-rank space is a one-shot operation, as opposed to the iterative procedure of EM. 
 
@@ -272,7 +273,7 @@ Lastly, computing the SVD and estimating parameters in the low-rank space is a o
 	\centering
 	\fbox{
 	\begin{footnotesize}		
-	\begin{subfigure}{0.85\columnwidth}
+	\begin{subfigure}{0.87\columnwidth}
 	\vspace{-1cm}
 	{\bf Inputs:} 
 	
@@ -374,7 +375,7 @@ A function $\phi$ that maps inside trees $t$ to feature-vectors $\phi(t) \in \re
 	\label{fig:emlearn}	
 	\end{subfigure}		
 	\end{footnotesize}}
-	\caption{The two parameter estimation algorithms proposed for L-SCFGs.}
+	\caption{The two parameter estimation algorithms proposed for L-SCFGs.$\odot$ is the element-wise multiplication operator}
 	\label{fig:estimation-algos}
 \end{figure*}
 
@@ -521,6 +522,25 @@ The spectral algorithm is an at least an order of magnitude faster: it completes
 \subsection{Discussion \& Analysis}
 
 \section{Related Work}
+\label{sec:related}
+The goal of refining single-category HPBT grammars or automatically learning the NT categories in a grammar, instead of relying on noisy parser outputs, has been explored from several different angles in the MT literature. 
+\newcite{Blunsom2008} present a Bayesian model for synchronous grammar induction, and place an appropriate nonparametric prior on the parameters. 
+However, their starting point is to estimate a synchronous grammar with multiple categories from parallel data (using the word alignments as a prior), while we aim to refine a fixed grammar with additional latent states.  
+Furthermore, their estimation procedure is extremely expensive and is restricted to learning up to five NT categories, via a series of mean-field approximations. 
+
+Another approach is to explicitly attach a real-valued vector to each NT: \newcite{Huang2010} use an external source-language parser for this purpose and score rules based on the similarity between a source sentence parse and the information contained in this vector, which explicitly requires the integration of a good-quality source-language parser. 
+The EM-based algorithm that we propose here is similar to what they propose, except that we need to handle tensor structures.  
+\newcite{Mylonakis2011} learn a synchronous grammar through a cross-validated version of EM, but since they consider the source and target sentences jointly, their inside-outside algorithm is $\mathcal{O}(n^6)$.  
+
+The idea of automatically learned grammar refinements comes from the monolingual parsing literature, where phenomena like head lexicalization can be modeled through latent variables.  \newcite{Matsuzaki2005} look at a likelihood-based method to split the NT categories of a grammar into a fixed number of sub-categories, while \newcite{Petrov2006} learn a variable number of sub-categories per NT.  The latter's extension is not particularly applicable to single-category grammars, but may be useful for finding the optimal number of latent states from the data.  
+
+\newcite{Hsu2009} presented one of the initial efforts at spectral-based parameter estimation (using SVD) of observed moments for latent variable models, in the case of Hidden Markov models. 
+This idea was extended to L-PCFGs \cite{Cohen2012a}, and our approach can be seen as a bilingual or synchronous generalization, particularly the tensor formulation.  
+We base our parameter estimation algorithm on the follow-up work of \newcite{Cohen2013}.  
+%Other latent variable models like latent Dirichlet allocation \cite{Blei2003} have also been tackled spectrally \cite{Anandkumar2012}.  
+
+The question of whether we can incorporate additional contextual information in minimal rule grammars in MT via auxiliary models instead of using longer, composed rules has been investigated \cite{Vaswani2011}, but in the context of tree-to-string translation. 
+Their model uses a Markov model where the parameters are Kneser-Ney smoothed \cite{Kneser1993}, while in our instance we capture this smoothing effect through low rank or latent states.  
 
 \section{Conclusion}
 
