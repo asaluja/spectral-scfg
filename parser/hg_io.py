@@ -121,12 +121,12 @@ in nodeMarginals, the marginal is associated with an NT span.
 This corresponds exactly to a node. 
 NOTE: need to update for mle estimates
 '''
-def nodeMarginals(alpha, beta, normalizer, hg, flipSign, words):
+def nodeMarginals(alpha, beta, normalizer, hg, flipSign, rank, words):
     marginals = {}
     flipped = False
     for node in hg.nodes_:
         LHS = node.cat[:-1] + "_%d_%d]"%(node.i, node.j)
-        marginal = np.dot(alpha[node.id], beta[node.id]) / normalizer
+        marginal = (alpha[node.id] * beta[node.id]) / normalizer if rank == 0 else np.dot(alpha[node.id], beta[node.id]) / normalizer
         if marginal < 0:
             flipped = True
             if flipSign:
@@ -134,13 +134,14 @@ def nodeMarginals(alpha, beta, normalizer, hg, flipSign, words):
             else:
                 sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g\n"%(hg.nodes_[nodeID].i, hg.nodes_[nodeID].j, marginals[nodeID]))
                 return marginals
-        for inEdgeID in node.in_edges_: #the same marginal is used for all incoming edges (rules)
-            key = ' ||| '.join([node.cat, hg.edges_[inEdgeID].rule])
-            src_decorated = decorateSrcRule(hg, inEdgeID)
-            for target_rule in paramDict[key]:
-                src_tgt_decorated = "<unk> ||| %s"%(words[node.i]) if target_rule == "<unk>" else "%s ||| %s"(src_decorated, decorateTgtRule(target_rule))
-                lhs_src_tgt = ' ||| '.join([LHS, src_tgt_decorated])
-                marginals[lhs_src_tgt] = marginal #associate the marginal to each rule
+        marginals[(node.i, node.j)] = marginal #key is the cell in the parse chart
+        #for inEdgeID in node.in_edges_: #the same marginal is used for all incoming edges (rules)
+        #    key = ' ||| '.join([node.cat, hg.edges_[inEdgeID].rule])
+        #    src_decorated = decorateSrcRule(hg, inEdgeID)
+        #    for target_rule in paramDict[key]:
+        #        src_tgt_decorated = "<unk> ||| %s"%(words[node.i]) if target_rule == "<unk>" else "%s ||| %s"(src_decorated, decorateTgtRule(target_rule))
+        #        lhs_src_tgt = ' ||| '.join([LHS, src_tgt_decorated])
+        #        marginals[lhs_src_tgt] = marginal #associate the marginal to each rule
     return marginals, flipped
 
 '''
@@ -194,7 +195,7 @@ def insideOutside(hg, paramDict, rank, words, flipSign, nodeMarginal):
     alpha = computeInside(hg, paramDict, rank)    #paramDict keys are 'LHS ||| src_RHS' format
     beta = computeOutside(hg, paramDict, rank, alpha)
     g = alpha[hg.nodes_[-1].id] if rank == 0 else alpha[hg.nodes_[-1].id].dot(paramDict["Pi"]) #take alpha of the top rule, dot product it with Pi parameters    
-    marginals, flipped = nodeMarginals(alpha, beta, g, hg, flipSign, words) if nodeMarginal else edgeMarginals(alpha, beta, g, hg, flipSign, rank, paramDict, words)
+    marginals, flipped = nodeMarginals(alpha, beta, g, hg, flipSign, rank, words) if nodeMarginal else edgeMarginals(alpha, beta, g, hg, flipSign, rank, paramDict, words)
     return marginals, flipped
     
 

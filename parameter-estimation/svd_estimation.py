@@ -87,6 +87,18 @@ def main():
     sys.stderr.write("SVD and projections complete. Time taken: %.3f sec\n"%timeTaken)    
     start = time.clock()
     paramDict, countDict = computeCorrelationsAndSmooth(Y, Z, featBinDict["smooth"]) if "smooth" in featBinDict else computeCorrelations(Y, Z) #compute tensors, matrices, and vectors
+
+    #below code for conditional prob write out
+    '''
+    normalizer = 0
+    for srcKey in paramDict:
+        normalizer = sum([countDict[srcKey][tgtKey] for tgtKey in paramDict[srcKey]])
+        for tgtKey in paramDict[srcKey]:
+            cond_prob = countDict[srcKey][tgtKey] / float(normalizer)
+            paramDict[srcKey][tgtKey] = np.multiply(paramDict[srcKey][tgtKey], cond_prob)
+    #cond prob write out code end
+    '''
+
     paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
     if "OOV" not in featBinDict: #assign 0 to OOVs if we explicitly do not want a parameter for them
         srcKey = "[X] ||| <unk>"
@@ -97,6 +109,8 @@ def main():
         countDict[srcKey][tgtKey] = 0
     timeTaken = time.clock() - start
     sys.stderr.write("Parameter estimation complete. Time taken: %.3f sec\n"%timeTaken)
+
+    #below code for tensor debugging
     '''
     G = np.random.random_sample((rank, rank))
     G = G + G.transpose()
@@ -118,6 +132,7 @@ def main():
                     result = np.tensordot(Ginv, result, axes=[1,2]).swapaxes(1,2)
                     paramDict[src_RHS][target_RHS] = result
     '''    
+
     if "filterRules" in featBinDict:
         start = time.clock()
         filterRulesByCount(countDict, paramDict, featBinDict["filterRules"])        
@@ -338,6 +353,7 @@ def computeCorrelations(Y, Z):
     scale = 1.0 / numExamples
     for rule in exampleIDs: #rule is an actual rule LHS ||| src ||| tgt
         arity = len(exampleIDs[rule][0].split())
+        #scale = 1.0 / len(exampleIDs[rule])
         outerProd = None
         if arity == 3: #compute tensor
             outerProd = np.zeros(shape=(rank, rank, rank))

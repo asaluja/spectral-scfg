@@ -10,10 +10,11 @@ devGrammar=$7
 testSrc=$8
 testSrcTgt=$9
 testGrammar=${10}
-config=${11}
-counts=${12}
-lexModel=${13}
-numProc=${14}
+counts=${11}
+lexModel=${12}
+config=${13}
+weights=${14}
+numProc=${15}
 
 #marginal computation, decoration of rules, for dev and devtest
 #python ${scripts}/scripts/escape_special_characters.py < $devSrc > ${working}/dev.src.filt
@@ -38,9 +39,9 @@ python ${scripts}/scripts/corpus2sgm.py ${working}/dec-rank${rank}-devtest/ < $t
 rm ${working}/devtest.src
 
 #MERT tuning
-~/tools/cdec/training/dpmert/dpmert.pl --config $config --devset ${working}/dev.sgm --output-dir ${working}/rank${rank}.mert --weights ${working}/mert.weights.mg-final --jobs $numProc
+~/tools/cdec/training/dpmert/dpmert.pl --config $config --devset ${working}/dev.sgm --output-dir ${working}/rank${rank}.mert --weights $weights --jobs $numProc
 
 #evaluation
-~/tools/cdec/training/utils/decode-and-evaluate.pl --jobs $numProc --input ${working}/dev.sgm --config $config --weights ${working}/rank${rank}.mert/weights.final &> rank${rank}.dev.bleu
-~/tools/cdec/training/utils/decode-and-evaluate.pl --jobs $numProc --input ${working}/devtest.sgm --config $config --weights ${working}/rank${rank}.mert/weights.final &> rank${rank}.devtest.bleu
+~/tools/cdec/training/utils/decode-and-evaluate.pl --jobs $numProc --input ${working}/dev.sgm --config $config --weights ${working}/rank${rank}.mert/weights.final &> ${working}/rank${rank}.dev.bleu
+~/tools/cdec/training/utils/decode-and-evaluate.pl --jobs $numProc --input ${working}/devtest.sgm --config $config --weights ${working}/rank${rank}.mert/weights.final &> ${working}/rank${rank}.devtest.bleu
 

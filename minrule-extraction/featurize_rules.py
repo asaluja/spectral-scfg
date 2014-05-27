@@ -182,9 +182,12 @@ def decorateSentenceGrammar(minRule_file, hiero_file, out_file, lex_model, optDi
                 else: #need to featurize, first do it phrasally
                     noLex = False
                     key = ' ||| '.join(elements[:3])
-                    if marginal: #marginals have additional space information
+                    if marginal: #marginals have additional span information
                         key, noLex = removeSpanInfo(elements[:3])
-                    ruleToPrint = rule.strip() if marginal else rule.strip() + " |||"#assumption is that rule will be of the form a ||| b ||| c |||
+                    ruleToPrint = rule.strip()
+                    if len(elements) == 3:
+                        ruleToPrint += " |||"
+                    #ruleToPrint = rule.strip() if marginal else rule.strip() + " |||"#assumption is that rule will be of the form a ||| b ||| c |||
                     if elements[1] == "<unk>":
                         ruleToPrint = "%s ||| %s ||| %s ||| %s PassThrough=1"%(elements[0], elements[2], elements[2], elements[3])
                     if key in hiero_rules: #then get the features from hiero

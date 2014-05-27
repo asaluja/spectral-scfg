@@ -30,9 +30,12 @@ Usage: python compute_hg.py (-d/-f/-n/-m/-s/-t) params rank input_sentences numP
 
 import sys, commands, string, time, gzip, cPickle, re, getopt, math, hg_io
 import multiprocessing as mp
+import pylab as plt
+import matplotlib as mpl
+import numpy as np
 from trie import trie, ActiveItem, HyperGraph
 
-(opts, args) = getopt.getopt(sys.argv[1:], 'dnfmst')
+(opts, args) = getopt.getopt(sys.argv[1:], 'dnfmstx')
 optsDict = {}
 for opt in opts:
     if opt[0] == '-d': #print info about each node in the hypergraph 
@@ -47,6 +50,8 @@ for opt in opts:
         optsDict["sourceNorm"] = 1
     elif opt[0] == '-t': #target norm
         optsDict["targetNorm"] = 1
+    elif opt[0] == '-x': #only write out marginals for non-lexical rules in source
+        optsDict["onlyXX"] = 1
 
 params_fh = open(args[0], 'rb')
 paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
@@ -70,8 +75,9 @@ def main():
     flipped_sentences = mp.Manager().list()
     pool = mp.Pool(processes=numProcesses, initializer=init, initargs=(failed_sentences, flipped_sentences))
     for i, line in enumerate(inputFile):
-        #parse(line.strip().split(), "%s/grammar.%d.gz"%(outDir, i), i)
-        pool.apply_async(parse, (line.strip().split(), "%s/grammar.%d.gz"%(outDir, i), i))
+        outFile = "%s/chart.%d.pdf"%(outDir, i) if "nodeMarginal" in optsDict else "%s/grammar.%d.gz"%(outDir, i)
+        #parse(line.strip().split(), outFile, i)
+        pool.apply_async(parse, (line.strip().split(), outFile, i))
     pool.close()
     pool.join()
     print "number of failed sentences: %d"%(len(failed_sentences))
@@ -128,6 +134,7 @@ def computeMarginals(hg, words, outFile, lineNum):
     sourceNorm = "sourceNorm" in optsDict
     targetNorm = "targetNorm" in optsDict
     MLE = "MLE" in optsDict
+    XX = "onlyXX" in optsDict
     rankToUse = 0 if MLE else rank
     start = time.clock()
     marginals, flipped = hg_io.insideOutside(hg, paramDict, rankToUse, words, flipSign, nodeMarginal)
@@ -136,23 +143,71 @@ def computeMarginals(hg, words, outFile, lineNum):
             flipped_sentences.append(lineNum)
         ioTime = time.clock() - start
         print "marginals computed over hypergraph. time taken: %.2f sec"%(ioTime)
-        #add here: if node marginal then we plot heat map
-        tgt_norm_marginals = None
-        src_norm_marginals = None
-        if targetNorm:
-            tgt_norm_marginals = normalizeMarginalsByTarget(marginals)
-        if sourceNorm:
-            src_norm_marginals = normalizeMarginalsBySource(marginals)        
-        fh = gzip.open(outFile, 'w')
-        for key in marginals:
-            featureStr = "%s ||| spectral=%.5g"%(key, marginals[key])
-            if sourceNorm:
-                featureStr += " spectralEgivenF=%.5g"%src_norm_marginals[key]
+        if nodeMarginal:
+            printHeatMap(marginals, words, outFile)
+        else:
+            tgt_norm_marginals = None
+            src_norm_marginals = None
             if targetNorm:
-                featureStr += " spectralFgivenE=%.5g"%tgt_norm_marginals[key]
-            fh.write("%s\n"%featureStr)
-        fh.write("[S] ||| [X_0_%d] ||| [1] ||| 0\n"%len(words)) #top level rule
-        fh.close()
+                tgt_norm_marginals = normalizeMarginalsByTarget(marginals)
+            if sourceNorm:
+                src_norm_marginals = normalizeMarginalsBySource(marginals)        
+            fh = gzip.open(outFile, 'w')
+            for key in marginals:
+                featureStr = "%s ||| spectral=%.5g"%(key, marginals[key])
+                if sourceNorm:
+                    featureStr += " spectralEgivenF=%.5g"%src_norm_marginals[key]
+                if targetNorm:
+                    featureStr += " spectralFgivenE=%.5g"%tgt_norm_marginals[key]
+                if XX: 
+                    if checkNonLex(key): #if non-lexical, write out the features
+                        fh.write("%s\n"%featureStr)
+                    else: #otherwise, just write out the rule
+                        fh.write("%s\n"%(key))
+                else:
+                    fh.write("%s\n"%featureStr)
+            fh.write("[S] ||| [X_0_%d] ||| [1] ||| 0\n"%len(words)) #top level rule
+            fh.close()
+
+def checkNonLex(rule):
+    elements = rule.split(' ||| ')
+    numNTs = len(re.findall(r'\[([^]]+)\]', elements[1]))
+    numWords = len(elements[1].split())
+    if numNTs == numWords:
+        return True
+    else:
+        return False
+
+def printHeatMap(marginals, words, outFile):
+    N = len(words)
+    words_uni = [i.decode('UTF-8') for i in words]
+    heatmap = np.zeros((N+1, N+1))
+    for chart in marginals:
+        heatmap[chart[0], chart[1]] = math.log(marginals[chart])
+    fig, ax = plt.subplots()    
+    mask = np.tri(heatmap.shape[0], k=0)
+    heatmap = np.ma.array(heatmap, mask=mask)
+    cmap = plt.cm.get_cmap('RdBu')
+    cmap.set_bad('w')
+    im = ax.pcolor(heatmap, cmap=cmap, alpha=0.8)
+    ax.grid(True)
+    ax.set_ylim([0,N])
+    ax.invert_yaxis()
+    ax.set_yticks(np.arange(heatmap.shape[1]-1)+0.5, minor=False)
+    ax.set_yticklabels(words_uni, minor=False)
+    ax.set_xticks(np.arange(heatmap.shape[0])+0.5, minor=True)
+    ax.set_xticklabels(np.arange(heatmap.shape[0]), minor=True)
+    ax.set_xticks([])
+    cbar = fig.colorbar(im, use_gridspec=True)
+    cbar.set_label('ln(sum)')
+    ax.set_xlabel('Span Length')
+    ax.xaxis.set_label_position('top')
+    ax.xaxis.tick_top()
+    plt.ylabel('Span starting at word: ')
+    plt.tight_layout()
+    #ax.set_title('CKY Heat Map: Node Marginals')
+    fig.savefig(outFile)    
+
 
 def normalizeMarginalsByTarget(margDict):
     sortMargDict = {}
