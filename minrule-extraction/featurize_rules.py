@@ -155,11 +155,13 @@ def computeLexicalScores(model_loc, rules_list):
                 srcWords = stripNTs(srcPhrase)
                 tgtWords = stripNTs(tgtPhrase)
                 if len(srcWords) > 0: 
-                    f_given_e = maxLexFgivenE(srcWords, tgtWords, tt)                
-                    new_rule += " MaxLexFgivenE=%.11f"%f_given_e
+                    f_given_e = maxLexFgivenE(srcWords, tgtWords, tt)     
+                    if f_given_e < MAXSCORE:
+                        new_rule += " MaxLexFgivenE=%.11f"%f_given_e
                 if len(tgtWords) > 0:
                     e_given_f = maxLexEgivenF(srcWords, tgtWords, tt)
-                    new_rule += " MaxLexEgivenF=%.11f"%e_given_f
+                    if e_given_f < MAXSCORE:
+                        new_rule += " MaxLexEgivenF=%.11f"%e_given_f
         new_rules.append(new_rule)
     return new_rules            
 
@@ -189,12 +191,12 @@ def decorateSentenceGrammar(minRule_file, hiero_file, out_file, lex_model, optDi
                         ruleToPrint += " |||"
                     #ruleToPrint = rule.strip() if marginal else rule.strip() + " |||"#assumption is that rule will be of the form a ||| b ||| c |||
                     if elements[1] == "<unk>":
-                        ruleToPrint = "%s ||| %s ||| %s ||| %s PassThrough=1"%(elements[0], elements[2], elements[2], elements[3])
+                        ruleToPrint = "%s ||| %s ||| %s ||| %s PassThrough=1"%(elements[0], elements[2], elements[2], elements[3]) if len(elements) > 3 else "%s ||| %s ||| %s ||| PassThrough=1"%(elements[0], elements[2], elements[2])
                     if key in hiero_rules: #then get the features from hiero
                         numRulesInHiero += 1
                         ruleToPrint += " %s"%hiero_rules[key]
                     else: #we use counts to compute our own feature values
-                        if not noLex: #if featurizing without marginals, then we only read in noLex items so its true; otherwise, determined above
+                        if not noLex and elements[1] != "<unk>": #if featurizing without marginals, then we only read in noLex items so its true; otherwise, determined above
                             ruleToPrint += " minRule=1.0" #minRule only feature                            
                             ruleToPrint += computeFeatures(key) 
                     if marginal and noLex: #[X1] [X2] rule
