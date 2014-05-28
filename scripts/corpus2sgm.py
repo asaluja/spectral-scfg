@@ -24,7 +24,7 @@ def main():
         closeTag = '</seg>'
         divider = ' ||| '
         count += 1
-        print ''.join([openTag, elements[0], closeTag, divider, elements[1]])
+        print ''.join([openTag, elements[0], closeTag, divider, ' ||| '.join(elements[1:])])
 
 if __name__ == "__main__":
     main()
