@@ -2,6 +2,8 @@
 
 '''
 Description for file here. 
+
+28 May: Removed addone functionality, shifted it to featurize_rules.py
 '''
 
 import sys, commands, string, cPickle, os, gzip, re, getopt
@@ -24,16 +26,15 @@ def ProcessInvalidRules(filename):
 '''
 This function handles rule formats of the type '[0] ||| [1,1] der [2,2] ||| [2,2] the [1,1]' etc.
 '''
-def IncrementCounts(training_tree, addOne):
-    base = 2 if addOne else 1
+def IncrementCounts(training_tree):
     rule = training_tree.rule
     arity = CheckArity(rule)
     if arity < 3:
-        Counts[rule] = Counts[rule] + 1 if rule in Counts else base
+        Counts[rule] = Counts[rule] + 1 if rule in Counts else 1
     else:
         sys.stderr.write("Rule %s has more than 2 NTs, not including in counts\n"%rule)
     for child in training_tree.children:
-        IncrementCounts(child, addOne)
+        IncrementCounts(child)
 
 def ReformatRule(rule):
     elements = rule.split(' ||| ')
@@ -60,13 +61,12 @@ def ReformatRule(rule):
 '''
 this function handles rules of the type '[X] ||| [X] [X] ||| [1] [2]', etc.
 '''
-def IncrementCountsByLine(filehandle, addOne):
-    base = 2 if addOne else 1
+def IncrementCountsByLine(filehandle):
     for rule in filehandle:
         arity = CheckArity(rule.strip())
         if arity < 3:
             rule_formatted = ReformatRule(rule.strip())
-            Counts[rule_formatted] = Counts[rule_formatted] + 1 if rule in Counts else base
+            Counts[rule_formatted] = Counts[rule_formatted] + 1 if rule in Counts else 1
         else:
             sys.stderr.write("Rule %s (unformatted) has more than 2 NTs, not including in counts\n"%rule)
 
@@ -81,13 +81,10 @@ def WriteOutCounts(fileout):
     cPickle.dump(reformatted, open(fileout, "wb"))
 
 def main():
-    (opts, args) = getopt.getopt(sys.argv[1:], 'an:')
-    addOne = False
+    (opts, args) = getopt.getopt(sys.argv[1:], 'n:')
     invalid_rules = None
     for opt in opts:
-        if opt[0] == '-a':
-            addOne = True
-        elif opt[0] == '-n':
+        if opt[0] == '-n':
             invalid_rules = ProcessInvalidRules(opt[1])
     minrule_grammars_loc = args[0]
     fileout = args[1]
@@ -95,10 +92,10 @@ def main():
     for lineNum in range(0, numSentences):
         minrule_fh = gzip.open(minrule_grammars_loc + "grammar.%d.gz"%lineNum)
         if invalid_rules is not None and lineNum in invalid_rules:
-            IncrementCountsByLine(minrule_fh, addOne)
+            IncrementCountsByLine(minrule_fh)
         else: #either invalid rules is none (in which case we don't need it) or rule is not invalid
             sync_tree = tree(0, None, None, minrule_fh)
-            IncrementCounts(sync_tree, addOne)
+            IncrementCounts(sync_tree)
     WriteOutCounts(fileout)
     print "Counts complete"
 

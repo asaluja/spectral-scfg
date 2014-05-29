@@ -56,6 +56,10 @@ for opt in opts:
 params_fh = open(args[0], 'rb')
 paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
 grammar_rules = [rule for rule in paramDict.keys() if rule != "Pi"] #Pi contains the start of sentence params
+for srcKey in paramDict:
+    if srcKey != "Pi":
+        for tgtKey in paramDict[srcKey]:
+            print ' ||| '.join([srcKey, tgtKey])
 grammarTrie = trie(grammar_rules) 
 rank = int(args[1])
 inputFile = open(args[2], 'r').readlines()

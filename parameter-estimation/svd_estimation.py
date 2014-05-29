@@ -77,8 +77,9 @@ def main():
     sys.stderr.write("Feature extraction complete. Time taken: %.3f sec\n"%timeTaken)
     kappa = 5.0
     rank = int(args[2])
+    singletons = []
     if "OOV" in featBinDict: #only treat unigram OOVs; we re-organize inside features to reflect this
-        computeOOVProbMass(inFeatures)
+        singletons = computeOOVProbMass(inFeatures) #rename function
     in_fm = convertToSpMat(inFeatures, len(inFeatIDs), kappa) #convert to SpMat also does the feature scaling
     out_fm = convertToSpMat(outFeatures, len(outFeatIDs), kappa)
     start = time.clock()
@@ -96,20 +97,8 @@ def main():
         for tgtKey in paramDict[srcKey]:
             cond_prob = countDict[srcKey][tgtKey] / float(normalizer)
             paramDict[srcKey][tgtKey] = np.multiply(paramDict[srcKey][tgtKey], cond_prob)
-    #cond prob write out code end
     '''
-
-    paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
-    if "OOV" not in featBinDict: #assign 0 to OOVs if we explicitly do not want a parameter for them
-        srcKey = "[X] ||| <unk>"
-        tgtKey = "<unk>"
-        paramDict[srcKey] = {}
-        paramDict[srcKey][tgtKey] = np.zeros((rank))
-        countDict[srcKey] = {}
-        countDict[srcKey][tgtKey] = 0
-    timeTaken = time.clock() - start
-    sys.stderr.write("Parameter estimation complete. Time taken: %.3f sec\n"%timeTaken)
-
+    #cond prob write out code end
     #below code for tensor debugging
     '''
     G = np.random.random_sample((rank, rank))
@@ -132,7 +121,12 @@ def main():
                     result = np.tensordot(Ginv, result, axes=[1,2]).swapaxes(1,2)
                     paramDict[src_RHS][target_RHS] = result
     '''    
+    #tensor debugging end
 
+    paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
+    assignProbMassToOOVs("OOV" in featBinDict, paramDict, countDict, singletons)
+    timeTaken = time.clock() - start
+    sys.stderr.write("Parameter estimation complete. Time taken: %.3f sec\n"%timeTaken),
     if "filterRules" in featBinDict:
         start = time.clock()
         filterRulesByCount(countDict, paramDict, featBinDict["filterRules"])        
@@ -143,7 +137,7 @@ def main():
         normalizeCountDict(countDict)
         cPickle.dump(countDict, open(args[3], "wb"))
         timeTaken = time.clock() - start
-        sys.stderr.write("Wrote out raw counts, normalized counts, and wrote out normalized counts.  Time taken: %.3f sec\n"%timeTaken)
+        sys.stderr.write("Normalized counts, and wrote out normalized counts.  Time taken: %.3f sec\n"%timeTaken)
     else:
         start = time.clock()
         cPickle.dump(paramDict, open(args[3], "wb")) #write out in cPickle format for I/O algorithm
@@ -169,6 +163,34 @@ def printTree(stree):
         printTree(child)
         print "back from child: "
         print child
+
+def assignProbMassToOOVs(OOV, paramDict, countDict, singletons):
+    if not OOV: #assign 0 to OOVs if we explicitly do not want a parameter for them
+        for singleton in singletons:
+            elements = ' ||| '.split(singleton)
+            srcKey = ' ||| '.join(elements[:2])
+            tgtKey = elements[2]
+            srcDict = paramDict[srcKey] if srcKey in paramDict else {}
+            srcDict[tgtKey] = np.zeros((rank))
+            paramDict[srcKey] = srcDict
+            countSrcDict = countDict[srcKey] if srcKey in countDict else {}
+            countSrcDict[tgtKey] = 0
+            countDict[srcKey] = countSrcDict
+    else:
+        OOV_param = paramDict["[X] ||| <unk>"]["<unk>"]
+        avgOOV_param = np.divide(OOV_param, len(singletons)+1)
+        paramDict["[X] ||| <unk>"]["<unk>"] = avgOOV_param
+        countDict["[X] ||| <unk>"]["<unk>"] = 1
+        for singleton in singletons:
+            elements = singleton.split(' ||| ')
+            srcKey = ' ||| '.join(elements[:2])
+            tgtKey = elements[2]
+            srcDict = paramDict[srcKey] if srcKey in paramDict else {}
+            srcDict[tgtKey] = avgOOV_param
+            paramDict[srcKey] = srcDict
+            countSrcDict = countDict[srcKey] if srcKey in countDict else {}
+            countSrcDict[tgtKey] = 1
+            countDict[srcKey] = countSrcDict
 
 '''
 for word class feature - reads in word classes that were
@@ -459,11 +481,14 @@ only appear once in the corpus) and eliminates them from
 the feature matrix.  Since we only look at singleton pre-terminals,
 we do not need to change the features of the outside matrix. 
 Once features are updated, we also update the example IDs correspondingly. 
+
+EDIT: make changes
 '''
 def computeOOVProbMass(inFeatures):
     global exampleIDs
-    preTermSingletons = [k for k,v in exampleIDs.items() if len(v) == 1 and len(v[0].split()) == 1] #val is a string that provides current, inside and outside tree IDs
+    preTermSingletons = [k for k,v in exampleIDs.items() if len(v) == 1 and len(v[0].split()) == 1] #val is a string that provides current, inside and outside tree IDs    
     sys.stderr.write("Number of pre-term singletons: %d\n"%(len(preTermSingletons)))
+    sys.stderr.write("Out of %d rule types and %d rule tokens\n"%(len(exampleIDs), len(inFeatures)))
     numValidParents = 0
     for preTerm in preTermSingletons: #preTerm is a "LHS ||| src ||| tgt" string
         rowIdx = ruleToIdxMap[preTerm]["current"].pop()        
@@ -487,6 +512,7 @@ def computeOOVProbMass(inFeatures):
         exampleIDs.setdefault("[X] ||| <unk> ||| <unk>", []).append(outIdxStr)
         exampleIDs.pop(preTerm) #remove preTerm rule from exampleIDs
     sys.stderr.write("Number of pre-term singletons with valid (unary or binary) parents: %d\n"%numValidParents)
+    return preTermSingletons
 
 '''
 the main feature extraction function.  A recursive function that, 

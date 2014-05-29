@@ -16,7 +16,6 @@ multiplications don't work out.
 Update (Jan 2, 2013): added two different marginal computations: 
 node marginal and edge marginal. 
 '''
-
 import sys, commands, string, re
 from trie import HyperGraph
 import numpy as np
