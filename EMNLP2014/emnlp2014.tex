@@ -30,6 +30,8 @@
 \usepackage{bm}
 \usepackage{multirow}
 
+\usepackage{xcolor}
+
 \DeclareMathOperator*{\argmax}{arg\,max}
 \newcommand{\ts}{\textsuperscript}
 \newcommand{\rione}{r^{(i)}}
@@ -72,6 +74,9 @@
 \newcommand{\balpha}{\bm{\alpha}}
 \newcommand{\bbeta}{\bm{\beta}}
 
+
+\newcommand{\ignore}[1]{}
+
 % You can expand the titlebox if you need extra space
 % to show all the authors. Please do not make the titlebox
 % smaller than 5cm (the original size); we will check this
@@ -91,6 +96,8 @@
 %  {\tt email@domain} \\}
 
 \date{}
+
+\newcommand{\shaycomment}[1]{\textcolor{blue}{#1 -- Shay}}
 
 \begin{document}
 \maketitle
@@ -113,11 +120,11 @@ Introduction goes here.
 
 \section{Latent Variable Models for Refinement}
 The core idea behind our proposed approach is an implicit refinement of translation rules in a synchronous context-free grammar (SCFG), using a latent variable model.  
-We first introduce the latent SCFG formalism and discuss how we acquire training examples of synchronous parse trees from word alignments, followed by a summary of the decoding algorithm for marginalizing over latent states, as it provides a natural way to introduce the data structures and representations used for the latent parameters.  
+We first introduce latent-variable synchronous context-free grammars (L-SCFGs) and discuss how we acquire training examples of synchronous parse trees from word alignments, followed by a summary of the decoding algorithm for marginalizing over latent states, as it provides a natural way to introduce the data structures and representations used for the latent parameters.  
 The decoder is based on simple tensor-vector products that sum over the latent states.  
 Two methods to estimate the parameters will be discussed in \S\ref{sec:estimation}. 
 
-\subsection{Latent SCFGs}
+\subsection{Latent-Variable SCFGs}
 \label{sec:formalism}
 We extend the definition of L-PCFGs \cite{Matsuzaki2005,Petrov2006} to synchronous grammars as used in machine translation \cite{Galley2004,Chiang2005}. 
 In this work, the aim is to refine the one-category grammar introduced by \newcite{Chiang2005} for hierarchical phrase-based translation (HPBT) in an effort to incorporate additional translational context via refined non-terminal (NT) categories instead of longer translation rules.  
@@ -126,32 +133,56 @@ An important point to keep in mind in comparison to L-PCFGs is that the right-ha
 
 A latent SCFG (L-SCFG) is a 6-tuple $(\mathcal{N}, m, n_s, n_t, \pi, t)$ where: 
 \begin{itemize}
-  \item $\mathcal{N}$ is a set of NT symbols in the grammar.  
-  	In our case, the set consists of only two symbols, \bX~and the goal symbol \bS.  
+  \item $\mathcal{N}$ is a set of non-terminal symbols in the grammar.  
+  	For phrase based machine translation, the set consists of only two symbols, \bX~and a goal symbol \bS.  
   \item $[m]$ is the set of possible hidden states associated with NTs.  
   	Aligned pairs of NTs across the source and target languages share the same hidden state.
-	In line with previous work, we assume that the states associated with NTs on the RHS are \emph{not} conditionally independent given the latent state of the left-hand side (LHS).  
-   \item $[n]_s$ is the set of source side words, i.e., the source-side terminal vocabulary.  
-   \item $[n]_t$ is the set of target side words, i.e., the target-side vocabulary.  
-   \item For $a =\bX, b \in [n]_s \cup \mathcal{N} \setminus \{\bS\}, c \in [n]_t
+	%In line with previous work, we assume that the states associated with NTs on the RHS are \emph{not} conditionally independent given the latent state of the left-hand side (LHS).  
+   \item $[n_s]$ is the set of source side words, i.e., the source-side vocabulary, with $[n_s] \cap \mathcal{N} = \emptyset$.
+   \item $[n_t]$ is the set of target side words, i.e., the target-side vocabulary, with $[n_t] \cap \mathcal{N} = \emptyset$.
+   \item The synchronous production rules compose a set $\rules = \rules_0 \cup \rules_1 \cup \rules_2$:
+$\bullet$ Binary rules ($\rules_0$): $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2 c(h_3) \alpha_3, \beta_1 b(h_2) \beta_2 c(h_3) \beta_3 \rangle$$ or $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2 c(h_3) \alpha_3, \beta_1 c(h_2) \beta_2 b(h_3) \beta_3 \rangle$$ where $a,b,c \in \mathcal{N}$, $h_1,h_2,h_3 \in [m]$, $\alpha_1,\alpha_2,\alpha_3 \in [n_s]^{\ast}$ and $\beta_1,\beta_2,\beta_3 \in [n_t]^{\ast}$.
+
+$\bullet$ Preterminal rules ($\rules_1$): $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2, \beta_1 b(h_2) \beta_2$$ where $a,b \in \mathcal{N}$, $h_1,h_2 \in [m]$, $\alpha_1,\alpha_2 \in [n_s]^{\ast}$ and $\beta,\beta_2 \in [n_t]^{\ast}$. They are associated with parameters 
+
+$\bullet$ Terminal rules ($\rules_2$): $a(h_1) \rightarrow \langle \alpha, \beta \rangle$ where $a \in \mathcal{N}$, $\alpha \in [n_t]^{\ast}$ and $\beta \in [n_s]^{\ast}$.
+
+Each of these rules is associated with a probability $t(a(h_1) \rightarrow \gamma | a, h_1)$ where $\gamma$ is the right handside of the rule.
+
+\ignore{
+
+For $a =\bX, b \in [n_s] \cup \mathcal{N} \setminus \{\bS\}, c \in [n_t]
      \cup \mathcal{N} \setminus \{\bS\}, h_1, h_2, h_3 \in [m]$, we have the following context-free rules, based on the number of NT symbols \bX~in the RHS of the rule:
      \begin{itemize}
        \item Two NTs: \\
-	   $a(h_1) \rightarrow ~<b(h_2, h_3), c(h_2, h_3), \sim>$, where $\sim$ is a one-to-one correspondence between the NT symbols of $b$ and $c$, $h_2$ is associated with one of the aligned NT pairs, and $h_3$ is associated with the other pair.  
+	   $a(h_1) \rightarrow ~ \langle b(h_2, h_3), c(h_2, h_3), \sim \rangle$, where $\sim$ is a one-to-one correspondence between the NT symbols of $b$ and $c$, $h_2$ is associated with one of the aligned NT pairs, and $h_3$ is associated with the other pair.  
 	   The rule has an associated parameter $t(a \rightarrow b,c, h_2, h_3 | a, h_1)$
        \item One NT: \\
-	   	$a(h_1) \rightarrow ~<b(h_2), c(h_2), \sim>$, with associated parameter $t(a \rightarrow b, c, h_2 | a, h_1)$
+	   	$a(h_1) \rightarrow ~\langle b(h_2), c(h_2), \sim \rangle$, with associated parameter $t(a \rightarrow b, c, h_2 | a, h_1)$
        \item No NTs:
-	   	$a(h_1) \rightarrow ~<b, c,\sim>$, with associated parameter $t(a \rightarrow b,c | a, h_1)$
+	   	$a(h_1) \rightarrow ~ \langle b, c,\sim \rangle$, with associated parameter $t(a \rightarrow b,c | a, h_1)$
         \end{itemize}
-         \item For $a=\bS$, $h \in [m]$, $\pi(\bS, h)$ is a parameter specifying the probability of $\bS(h)$ being at the root of the tree. 
+}
+
+
+         \item For $a \in \mathcal{N}$, $h \in [m]$, $\pi(a, h)$ is a parameter specifying the root probability of $a(h)$. 
 \end{itemize}
-A skeletal tree (s-tree) for a sentence is a sequence of rules $r_1, \dots, r_N$ where each $r_i$ is of the form of one of the context-free rules above. 
+A skeletal tree (s-tree) for a sentence is a sequence of rules $r_1, \dots, r_N$ where each $r_i$ is of the form of one of the synchronous context-free rules above. 
 A full tree consists of an s-tree $r_1, \dots, r_N$ together with values $h_1, \dots, h_N$.  
-In HPBT, where only rules with at most two NTs in the RHS are used, the set of rules obtained from the training corpus $\rules$ can be further divided into three non-overlapping sets $\rules_0, \rules_1, \rules_2 \in \rules$, containing the pre-terminal, unary, and binary rules respectively.   
+%In HPBT, where only rules with at most two NTs in the RHS are used, the set of rules obtained from the training corpus $\rules$ can be further divided into three non-overlapping sets $\rules_0, \rules_1, \rules_2 \in \rules$, containing the pre-terminal, unary, and binary rules respectively.   
 
 \subsection{Minimal Grammar Extraction}
 \label{sec:mingrammar}
+To estimate the parameters $t$ of an L-SCFG, a dataset composed of synchronous s-trees is required.
+We acquire these derivations from word alignments. 
+
+
+\shaycomment{
+I want to rephrase your text below, because it does not make it clear that we are using minimal rules.
+I am confused about the process though, is it that the Gildea algorithm extracts a minimal grammar or synchronous s-trees?
+Can you also roughly describe how the algorithm works in a few key sentences?}
+
+
 In order to learn the parameters $t$, we need a set of synchronous s-trees, which can be acquired from word alignments.  
 %For each rule $r_i$ in each s-tree, we can either compute partial counts in the expectation step of the EM algorithm, or extract second-order moments of features on which we compute an SVD.  
 During the extraction phase, if we consider {\bf composed} rules, namely rules that can be formed out of smaller rules in the grammar, then there are multiple synchronous trees consistent with the alignments for a given sentence pair, and thus the total number of applicable rules can be combinatorially larger than if we just consider the set of {\bf minimal} rules i.e., rules that cannot be formed from other rules. 
@@ -253,11 +284,13 @@ The decoder computes probabilities for each rule in the parse forest of a source
 Figure \ref{fig:hg_io_spec} presents the tensor version of the inside-outside algorithm for decoding L-SCFGs. 
 The algorithm takes as input the parse forest of the source sentence represented as a hypergraph \cite{Klein2001}, which is computed using a bottom-up parser with Earley-style rules (citation), similar to the CKY+ algorithm used in \newcite{Chiang2007}.  
 Then, the algorithm computes inside and outside probabilities over the hypergraph using the tensor representations, and converts these probabilities to marginal rule probabilities.  
-It is similar to the version presented in \newcite{Cohen2012a}, but adapted to hypergraph parse forests. 
+It is similar to the version presented in \newcite{cohen-14b}, but adapted to hypergraph parse forests. 
  
-The algorithm maintains its $\mathcal{O}(n^3|G|)$ complexity where $n$ is the length of the input sentence and $|G|$ is the size of the grammar; we do not increase the number of rules at all, so the grammar size is the same. 
-But of course, there is no free lunch, and the additional computation gets shifted to the marginalization over latent states via the algorithm in Figure \ref{fig:hg_io_spec}.  
-However, the bulk of the computation in this case is in the form of a series of tensor-vector products of relatively small size (each dimension is of length $m$), which can be computed very quickly and in parallel.  
+The complexity of this decoding algorithm is $\mathcal{O}(n^3 m^3 |G|)$ where $n$ is the length of the input sentence, $|G|$ is the number of production rules in the grammar (without latent-variable annotations), and $m$ is the number of latent states.
+%The algorithm maintains its $\mathcal{O}(n^3|G|)$ complexity where $n$ is the length of the input sentence and $|G|$ is the size of the grammar; \shaycomment{what do you mean by the following? increase the number of rules compared to what? the grammar size is the same as what?} we do not increase the number of rules at all, so the grammar size is the same. 
+%But of course, there is no free lunch, and the additional computation gets shifted to the marginalization over latent states via the algorithm in Figure \ref{fig:hg_io_spec}.  
+The bulk of the computation is a series of tensor-vector products of relatively small size (each dimension is of length $m$), which can be computed very quickly and in parallel \shaycomment{are we really parallelizing the decoding, or you are just suggesting that it is somehow possible? what can be done in a parallel manner?}. In addition, these tensor computations can be significantly
+sped up using techniques described by Cohen and Collins (2012) and Cohen et al. (2013)\nocite{cohen-12c,cohen-13a}, only adapted to S-CFGs.  
 
 \section{Parameter Estimation for L-SCFGs}
 \label{sec:estimation}
@@ -402,7 +435,7 @@ Using the lower-dimensional representations for inside and outside trees, in ste
 For binary rules, with two child inside vectors and one outside vector, the result $\e{E}^r$ is a 3-mode tensor; for unary rules, a regular matrix, and for pre-terminal rules with no right-hand side non-terminals, a vector. 
 The final parameter estimate is then the associated tensor/matrix/vector, scaled by the maximum likelihood estimate of the rule $r$, as in step 3.  
 
-The corresponding theoretical guarantees from \newcite{Cohen2012a} can also be generalized to the synchronous case trivially.  
+The corresponding theoretical guarantees from \newcite{cohen-14b} can also be generalized to the synchronous case trivially.  
 $\hat{\Omega}$ is an empirical estimate of the true covariance matrix $\Omega$, and if $\Omega$ has rank $m$, then the marginals computed using the spectrally-estimated parameters will converge to the true marginals.  
 The sample complexity for convergence is inversely proportional to the $m^{\textrm{th}}$ largest singular value.   
 
@@ -535,7 +568,7 @@ The EM-based algorithm that we propose here is similar to what they propose, exc
 The idea of automatically learned grammar refinements comes from the monolingual parsing literature, where phenomena like head lexicalization can be modeled through latent variables.  \newcite{Matsuzaki2005} look at a likelihood-based method to split the NT categories of a grammar into a fixed number of sub-categories, while \newcite{Petrov2006} learn a variable number of sub-categories per NT.  The latter's extension is not particularly applicable to single-category grammars, but may be useful for finding the optimal number of latent states from the data.  
 
 \newcite{Hsu2009} presented one of the initial efforts at spectral-based parameter estimation (using SVD) of observed moments for latent variable models, in the case of Hidden Markov models. 
-This idea was extended to L-PCFGs \cite{Cohen2012a}, and our approach can be seen as a bilingual or synchronous generalization, particularly the tensor formulation.  
+This idea was extended to L-PCFGs \cite{cohen-14b}, and our approach can be seen as a bilingual or synchronous generalization, particularly the tensor formulation.  
 We base our parameter estimation algorithm on the follow-up work of \newcite{Cohen2013}.  
 %Other latent variable models like latent Dirichlet allocation \cite{Blei2003} have also been tackled spectrally \cite{Anandkumar2012}.  
 
