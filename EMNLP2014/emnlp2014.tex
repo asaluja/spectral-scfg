@@ -73,7 +73,9 @@
 \framebox[7pt]{\rule{0pt}{7pt}}}}
 \newcommand{\balpha}{\bm{\alpha}}
 \newcommand{\bbeta}{\bm{\beta}}
-
+\newenvironment{itemizesquish}{\begin{list}{\setcounter{enumi}{0}\labelitemi}{\setlength{\itemsep}{-0.25em}\setlength{\labelwidth}{0.5em}\setlength{\leftmargin}{\labelwidth}\addtolength{\leftmargin}{\labelsep}}}{\end{list}}
+\usepackage{color}
+\newcommand{\cjd}[1]{\textcolor{red}{\textbf{[#1 --CJD] }}}
 
 \newcommand{\ignore}[1]{}
 
@@ -119,7 +121,7 @@ Introduction goes here.
 %During decoding, these states are marginalized yielding a context-dependent likelihood for each rule, which can then be incorporated as an additional feature in the standard MT pipeline.  
 
 \section{Latent Variable Models for Refinement}
-The core idea behind our proposed approach is an implicit refinement of translation rules in a synchronous context-free grammar (SCFG), using a latent variable model.  
+The contribution of this paper is an algorithm for learning an implicit refinement of nonterminal categories in synchronous context-free grammar (SCFG), using a latent variable model.  
 We first introduce latent-variable synchronous context-free grammars (L-SCFGs) and discuss how we acquire training examples of synchronous parse trees from word alignments, followed by a summary of the decoding algorithm for marginalizing over latent states, as it provides a natural way to introduce the data structures and representations used for the latent parameters.  
 The decoder is based on simple tensor-vector products that sum over the latent states.  
 Two methods to estimate the parameters will be discussed in \S\ref{sec:estimation}. 
@@ -132,7 +134,7 @@ Thus, the following discussion is restricted to these kinds of grammars, althoug
 An important point to keep in mind in comparison to L-PCFGs is that the right-hand side (RHS) non-terminals of synchronous rules are aligned pairs across the source and target languages.  
 
 A latent SCFG (L-SCFG) is a 6-tuple $(\mathcal{N}, m, n_s, n_t, \pi, t)$ where: 
-\begin{itemize}
+\begin{itemizesquish}
   \item $\mathcal{N}$ is a set of non-terminal symbols in the grammar.  
   	For phrase based machine translation, the set consists of only two symbols, \bX~and a goal symbol \bS.  
   \item $[m]$ is the set of possible hidden states associated with NTs.  
@@ -166,14 +168,14 @@ For $a =\bX, b \in [n_s] \cup \mathcal{N} \setminus \{\bS\}, c \in [n_t]
 
 
          \item For $a \in \mathcal{N}$, $h \in [m]$, $\pi(a, h)$ is a parameter specifying the root probability of $a(h)$. 
-\end{itemize}
-A skeletal tree (s-tree) for a sentence is a sequence of rules $r_1, \dots, r_N$ where each $r_i$ is of the form of one of the synchronous context-free rules above. 
+\end{itemizesquish}
+A skeletal tree (s-tree) for a sentence is a sequence of rules $r_1, \dots, r_N$ where each $r_i$ is of the form of one of the synchronous context-free rules above.\cjd{left most rewrite, relative to the source language? actually, isn't it easiest just to say it's the rules in a synchronous derivation, not decorated with latent state info?} 
 A full tree consists of an s-tree $r_1, \dots, r_N$ together with values $h_1, \dots, h_N$.  
 %In HPBT, where only rules with at most two NTs in the RHS are used, the set of rules obtained from the training corpus $\rules$ can be further divided into three non-overlapping sets $\rules_0, \rules_1, \rules_2 \in \rules$, containing the pre-terminal, unary, and binary rules respectively.   
 
 \subsection{Minimal Grammar Extraction}
 \label{sec:mingrammar}
-To estimate the parameters $t$ of an L-SCFG, a dataset composed of synchronous s-trees is required.
+To estimate the parameters $t$ of an L-SCFG, a dataset composed of synchronous s-trees is required.\cjd{not required, but we assume we have it for simplicity's sake. we need to make clear what our assumptions are up front because this is quite different from how parameters are usually learned in translation models}
 We acquire these derivations from word alignments. 
 
 
@@ -191,7 +193,7 @@ To extract a set of minimal rules for each word-aligned sentence pair, we utiliz
 Since the algorithm extracts one minimal tree for each sentence pair, derivation forests do not have to be considered, making parameter estimation more tractable.\footnote{For our \textsc{DE-EN} corpus (\S\ref{sec:data}), a grammar extracted using the traditional heuristics was more than 80 times larger than the minimal grammar.} 
 Furthermore, by using minimal rules as a starting point instead of the traditional heuristically-extracted rules \cite{Chiang2005} or arbitrary compositions of minimal rules \cite{Galley2006}, we are also able to explore the transition from minimal rules to composed ones in a principled manner by encoding contextual information through the latent states.   
 Thus, a beneficial side effect of our refinement process is the creation of more context-specific rules without increasing the overall size of the grammar.
-
+\cjd{make sure to cite Marino et al, operation sequence model, the Trevor Cohn Bayesian Markov sequence translation model, etc. they all make similar assumptions}
 
 \subsection{Decoding}
 \label{sec:decoding} 
