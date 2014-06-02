@@ -119,7 +119,7 @@ For example, the English word \emph{plant} can translate in Spanish to both \emp
 Therefore, a natural question is how we can refine synchronous grammars with learned latent categories that capture certain context-specific syntactic regularities, but without the use of hard syntactic constraints from a parser.  
 
 In this work, we propose to refine the synchronous grammars used in MT by incorporating additional context via a latent variable model featurized over inside and outside sub-trees of synchronous derivation trees for source-target sentence pairs.  
-We first generalize the concept of latent PCFGs to latent variable SCFGs (\S\ref{sec:formalism}), followed by a presentation of the tensor-based formulation for our parameters, a representation that makes it convenient to marginalize over latent states.  
+We first generalize the concept of latent PCFGs to latent variable SCFGs (\S\ref{sec:formalism}). We then follow by a presentation of the tensor-based formulation for our parameters, a representation that makes it convenient to marginalize over latent states.  
 Subsequently, two methods for parameter estimation are presented (\S\ref{sec:estimation}): a spectral approach based on the method of moments, and an EM-based likelihood maximization approach.  
 Results on synthetic data and a Chinese-English evaluation set (\S\ref{sec:evaluation}) indicate significant gains over baselines and point to the promise of using latent variable synchronous grammars in conjunction with a smaller, simpler set of rules instead of unwieldy and bloated grammars extracted via existing heuristics, where a large number of context-independent but un-generalizable rules are utilized.  
 
@@ -135,8 +135,8 @@ Two methods to estimate the parameters will be discussed in \S\ref{sec:estimatio
 \subsection{Latent-Variable SCFGs}
 \label{sec:formalism}
 We extend the definition of L-PCFGs \cite{Matsuzaki2005,Petrov2006} to synchronous grammars as used in machine translation \cite{Galley2004,Chiang2005}. 
-In this work, the aim is to refine the one-category grammar introduced by \newcite{Chiang2005} for hierarchical phrase-based translation (HPBT) in order to incorporate additional translational context via refined non-terminal (NT) categories instead of longer translation rules.  
-Thus, the following discussion is restricted to these kinds of grammars, although the method is equally applicable in other scenarios, e.g., the extended tree-to-string transducer ({\bf xRs}) formalism \cite{Huang2006,Graehl2008} commonly used in syntax-directed translation.  
+In this work, we refine the one-category grammar introduced by \newcite{Chiang2005} for hierarchical phrase-based translation (HPBT) in order to incorporate additional translational context via refined non-terminal (NT) categories instead of longer translation rules.  
+\shaycomment{is it really true? it seenms to me like our definition is for general L-SCFGs with multiple non-terminals.}Thus, the following discussion is restricted to these kinds of grammars, although the method is equally applicable in other scenarios, e.g., the extended tree-to-string transducer ({\bf xRs}) formalism \cite{Huang2006,Graehl2008} commonly used in syntax-directed translation.  
 An important point to keep in mind in comparison to L-PCFGs is that the right-hand side (RHS) non-terminals of synchronous rules are aligned pairs across the source and target languages.  
 
 A latent variable SCFG (L-SCFG) is a 6-tuple $(\mathcal{N}, m, n_s, n_t, \pi, t)$ where: 
@@ -152,7 +152,7 @@ A latent variable SCFG (L-SCFG) is a 6-tuple $(\mathcal{N}, m, n_s, n_t, \pi, t)
    
 $\bullet$ Binary rules ($\rules_2$): $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2 c(h_3) \alpha_3, \beta_1 b(h_2) \beta_2 c(h_3) \beta_3 \rangle$$ or $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2 c(h_3) \alpha_3, \beta_1 c(h_2) \beta_2 b(h_3) \beta_3 \rangle$$ where $a,b,c \in \mathcal{N}$, $h_1,h_2,h_3 \in [m]$, $\alpha_1,\alpha_2,\alpha_3 \in [n_s]^{\ast}$ and $\beta_1,\beta_2,\beta_3 \in [n_t]^{\ast}$.
 
-$\bullet$ Unary rules ($\rules_1$): $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2, \beta_1 b(h_2) \beta_2$$ where $a,b \in \mathcal{N}$, $h_1,h_2 \in [m]$, $\alpha_1,\alpha_2 \in [n_s]^{\ast}$ and $\beta,\beta_2 \in [n_t]^{\ast}$. 
+$\bullet$ Unary rules ($\rules_1$): $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2, \beta_1 b(h_2) \beta_2\rangle$$ where $a,b \in \mathcal{N}$, $h_1,h_2 \in [m]$, $\alpha_1,\alpha_2 \in [n_s]^{\ast}$ and $\beta,\beta_2 \in [n_t]^{\ast}$. 
 
 $\bullet$ Pre-terminal rules ($\rules_0$): $a(h_1) \rightarrow \langle \alpha, \beta \rangle$ where $a \in \mathcal{N}$, $\alpha \in [n_t]^{\ast}$ and $\beta \in [n_s]^{\ast}$.
 
@@ -198,7 +198,7 @@ The rule types across all sentence pairs are combined to form a minimal grammar.
 %In order to learn the parameters $t$, we need a set of synchronous s-trees, which can be acquired from word alignments.  
 %For each rule $r_i$ in each s-tree, we can either compute partial counts in the expectation step of the EM algorithm, or extract second-order moments of features on which we compute an SVD.  
 %During the extraction phase, if we consider {\bf composed} rules, namely rules that can be formed out of smaller rules in the grammar, then there are multiple synchronous trees consistent with the alignments for a given sentence pair, and thus the total number of applicable rules can be combinatorially larger than if we just consider the set of {\bf minimal} rules i.e., rules that cannot be formed from other rules. 
-To extract a set of minimal rules for each word-aligned sentence pair, we utilize the linear-time extraction algorithm of \newcite{Zhang2008}.  
+To extract a set of minimal rules for each word-aligned sentence pair, we use the linear-time extraction algorithm of \newcite{Zhang2008}.  
 This algorithm generalizes an approach for finding all common intervals (a pair of phrases such that no word pair in the alignment links a word inside the phrase to a word outside the phrase) between two permutations to sequences with many-to-many alignment links between the two sides, as in word alignment. 
 \avcomment{Should we talk about how rules with $>$ 2 NTs in the RHS are generated, and how we handle?}
 By using minimal rules as a starting point instead of the traditional heuristically-extracted rules \cite{Chiang2005} or arbitrary compositions of minimal rules \cite{Galley2006}, we are also able to explore the transition from minimal rules to composed ones in a principled manner by encoding contextual information through the latent states.   
@@ -301,15 +301,16 @@ It is similar to the version presented in \newcite{cohen-14b}, but adapted to hy
 The complexity of this decoding algorithm is $\mathcal{O}(n^3 m^3 |G|)$ where $n$ is the length of the input sentence, $|G|$ is the number of production rules in the grammar (without latent-variable annotations), and $m$ is the number of latent states.
 %The algorithm maintains its $\mathcal{O}(n^3|G|)$ complexity where $n$ is the length of the input sentence and $|G|$ is the size of the grammar; \shaycomment{what do you mean by the following? increase the number of rules compared to what? the grammar size is the same as what?} we do not increase the number of rules at all, so the grammar size is the same. 
 %But of course, there is no free lunch, and the additional computation gets shifted to the marginalization over latent states via the algorithm in Figure \ref{fig:hg_io_spec}.  
-The bulk of the computation is a series of tensor-vector products of relatively small size (each dimension is of length $m$), which can be computed very quickly and in parallel.
+%The bulk of the computation is a series of tensor-vector products of relatively small size (each dimension is of length $m$), which can be computed very quickly and in parallel.
 %\shaycomment{are we really parallelizing the decoding, or you are just suggesting that it is somehow possible? what can be done in a parallel manner?}
-\avcomment{we really are parallelizing the decoding, but I'm parallelizing at the level of sentences.  What I meant here is that each tensor-vector dot product can be parallelized in that the dot product along each dimension can be computed at the same time, which is how most matrix multiplication packages work right?} 
-In addition, these tensor computations can be significantly
-sped up using techniques described by Cohen and Collins (2012) and Cohen et al. (2013)\nocite{cohen-12c,cohen-13a}, but adapted to S-CFGs.  
+%\avcomment{we really are parallelizing the decoding, but I'm parallelizing at the level of sentences.  What I meant here is that each tensor-vector dot product can be parallelized in that the dot product along each dimension can be computed at the same time, which is how most matrix multiplication packages work right?} 
+%In addition, 
+The tensor computations can be significantly
+sped up using techniques described by \newcite{cohen-12c}, so that they are linear in $m$ and not cubic.  
 
 \section{Parameter Estimation for L-SCFGs}
 \label{sec:estimation}
-We explore two methods for estimating the parameters $C^r$ of the model: a likelihood-maximization approach based on EM \cite{Dempster1977}, and a spectral approach based on the method of moments \cite{Hsu2009}, where we identify a subspace using a singular value decomposition (SVD) \cite{Golub1996} of the cross-product feature space between inside and outside trees and estimate parameters in this subspace. 
+We explore two methods for estimating the parameters $C^r$ of the model: a likelihood-maximization approach based on EM \cite{Dempster1977}, and a spectral approach based on the method of moments \cite{Hsu2009,cohen-14b}, where we identify a subspace using a singular value decomposition (SVD) \cite{Golub1996} of the cross-product feature space between inside and outside trees and estimate parameters in this subspace. 
 
 Figure \ref{fig:estimation-algos} presents a side-by-side comparison of the two algorithms, which we discuss in this section.  
 In the spectral approach, we base our parameter estimates on low-rank representations of moments of features, while EM explicitly maximizes a likelihood criterion. 
@@ -322,7 +323,6 @@ Lastly, computing the SVD and estimating parameters in the low-rank space is a o
 	\fbox{
 	\begin{footnotesize}		
 	\begin{subfigure}{0.87\columnwidth}
-	\vspace{-1cm}
 	{\bf Inputs:} 
 	
 	Training examples $(\rione, \xione, \xitwo, \xithree, \oi, b^{(i)})$ for $i \in \{1 \ldots M\}$, where $\rione$ is a context free rule; $\xione$, $\xitwo$, and $\xithree$ are inside trees; $\oi$ is an outside tree; and $b^{(i)} = 1$ if the rule is at the root of tree, $0$ otherwise.
@@ -338,8 +338,8 @@ A function $\phi$ that maps inside trees $t$ to feature-vectors $\phi(t) \in \re
 
 	(Step 1: Projection) 
 	\begin{align*}
-		Y(t) &= U^T \phi(t)\\
-		Z(o) &= \Sigma^{-1} V^T \psi(o)
+		Y(t) &= U^{\top} \phi(t)\\
+		Z(o) &= \Sigma^{-1} V^{\top} \psi(o)
 	\end{align*}
 
 	(Step 2: Calculate Correlations)
@@ -364,7 +364,22 @@ A function $\phi$ that maps inside trees $t$ to feature-vectors $\phi(t) \in \re
 		\end{itemize}						
 	\end{itemize}
 	$Q^\bS$ is the set of trees at the root.  
-	\caption{\small The spectral learning algorithm for estimating parameters of an L-SCFG.}
+
+$\,$
+
+$\,$
+
+$\,$
+
+$\,$
+
+$\,$
+
+$\,$
+
+$\,$
+
+	\caption{\small The spectral learning algorithm for estimating parameters of an L-SCFG. \shaycomment{both figures appear as (a)?}}
 	\label{fig:splearn}
 	\end{subfigure}
 	%&
@@ -440,10 +455,10 @@ The specific features we used are discussed in \S\ref{sec:features}.
 Let $\mathcal{O}$ be the set of all tuples of inside-outside trees in our training corpus, whose size is equivalent to the number of rule tokens $M$, and let $\phi(t) \in \reals^{d \times 1}$, $\psi(o) \in \reals^{d' \times 1}$ be the inside and outside feature functions. 
 By computing the outer product $\otimes$ between the inside and outside feature vectors for each pair and aggregating, we obtain the empirical inside-outside feature covariance matrix:
 \begin{align}
-	\hat{\Omega} = \frac{1}{|\mathcal{O}|} \sum_{(o,t) \in \mathcal{O}} \phi(t) \left(\psi(o)\right)^T
+	\hat{\Omega} = \frac{1}{|\mathcal{O}|} \sum_{(o,t) \in \mathcal{O}} \phi(t) \left(\psi(o)\right)^{\top}
 	\label{eq:outerproduct}
 \end{align}
-If $m$ is the desired latent space dimension, we compute an $m$-rank truncated SVD of the empirical covariance matrix $\hat{\Omega} = U \Sigma V^T$, where $U \in \mathbb{R}^{d \times m}$ and $V \in \mathbb{R}^{d' \times m}$ are the matrices containing the left and right singular vectors, and $\Sigma \in \mathbb{R}^{d \times d'}$ is a diagonal matrix containing the $m$-largest singular values along its diagonal.  
+If $m$ is the desired latent space dimension, we compute an $m$-rank truncated SVD of the empirical covariance matrix $\hat{\Omega} = U \Sigma V^{\top}$, where $U \in \mathbb{R}^{d \times m}$ and $V \in \mathbb{R}^{d' \times m}$ are the matrices containing the left and right singular vectors, and $\Sigma \in \mathbb{R}^{d \times d'}$ is a diagonal matrix containing the $m$-largest singular values along its diagonal.  
 
 Figure \ref{fig:splearn} provides the remaining steps in the algorithm.  
 In step 1, for each inside and outside tree, we project its high-dimensional representation to the latent space.  
@@ -451,7 +466,7 @@ Using the lower-dimensional representations for inside and outside trees, in ste
 For binary rules, with two child inside vectors and one outside vector, the result $\e{E}^r$ is a 3-mode tensor; for unary rules, a regular matrix, and for pre-terminal rules with no right-hand side non-terminals, a vector. 
 The final parameter estimate is then the associated tensor/matrix/vector, scaled by the maximum likelihood estimate of the rule $r$, as in step 3.  
 
-The corresponding theoretical guarantees from \newcite{cohen-14b} can also be generalized to the synchronous case trivially.  
+The corresponding theoretical guarantees from \newcite{cohen-14b} can also be generalized to the synchronous case.  
 $\hat{\Omega}$ is an empirical estimate of the true covariance matrix $\Omega$, and if $\Omega$ has rank $m$, then the marginals computed using the spectrally-estimated parameters will converge to the true marginals.  
 The sample complexity for convergence is inversely proportional to the $m^{\textrm{th}}$ largest singular value.   
 
@@ -473,8 +488,9 @@ Lastly, the correlations are scaled by the existing parameter estimates.
 To obtain the next set of parameters, in the maximization step we normalize $\e{C}^r$ for $r \in \rules$ such that for every $h_1, \sum_{r'=r,h_2,h_3} \e{C}^{r'}(h_1, h_2, h_3) = 1$ for $r \in \rules_2$, $\sum_{r'=r,h_2} \e{C}^{r'}(h_1, h_2) = 1$ for $r \in \rules_1$, and $\sum_{r'=r,h_2} \e{C}^{r'}(h_2) = 1$ for $r \in \rules_0$.  
 We note that it is also possible to add sparse, overlapping features to an EM-based estimation procedure \cite{Berg-Kirkpatrick2010} and leave this for future work.  
 
-\section{Evaluation}
+\section{Experiments}
 \label{sec:evaluation}
+\shaycomment{what is the goal of the experiments? can you also state in the beginning the main conclusions you get out of the experiments? (preferably in a concise bulleted list.)}
 To evaluate the performance of L-SCFGs in a translation setting, we looked at several experiments across two language pairs.  
 The primary criterion of evaluation was BLEU \cite{Papineni2002}, and we evaluate our latent variable model against a number of baselines to elucidate its performance.  
 The latent variable model is integrated into the standard MT pipeline by computing marginal probabilities for each rule in the parse forest of a source sentence using the algorithm in Figure \ref{fig:hg_io_spec} with the parameters estimated through the algorithms in Figure \ref{fig:estimation-algos}, and is added as a feature for the rule during MERT \cite{Och2003}.  
