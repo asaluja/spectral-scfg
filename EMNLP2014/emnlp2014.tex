@@ -109,19 +109,19 @@
 \end{abstract}
 
 \section{Introduction}
-Statistical approaches to machine translation (MT) have achieved state-of-the-art results in many typologically diverse language pairs \cite{Bojar2013} by learning translation rules over longer multiword units or phrases (e.g., French $\rightarrow$ English: \emph{un chien Andalou} $\rightarrow$ \emph{an Andalusian dog}), instead of lexical or word units (\emph{chien} $\rightarrow$ \emph{dog}).  
-On top of these phrase-based approaches, the use of synchronous grammar-based formalisms \cite{Lewis1968} allows syntactic information to be explicitly incorporated in the translation process, either by taking into account both structural and categorical information \cite{Galley2004,Zollmann2006}, e.g., the rule \emph{EXAMPLE} or only structural information in the form of single-category grammars \cite{Chiang2005}, e.g., the rule \emph{EXAMPLE}.  
+Statistical approaches to machine translation (MT) have achieved state-of-the-art results in many typologically diverse language pairs \cite{Bojar2013} by learning translation rules over longer multiword units or phrases (e.g., French to English: \emph{un chien Andalou} $\rightarrow$ \emph{an Andalusian dog}), instead of lexical or word units (\emph{chien} $\rightarrow$ \emph{dog}).  
+On top of these phrase-based approaches, the use of synchronous grammar-based formalisms \cite{Lewis1968} allows syntactic information to be explicitly incorporated in the translation process, either by taking into account both structural and categorical information \cite{Galley2004}, e.g., the French to English rule \emph{VP $\rightarrow <$ ne VB pas, does not VB $>$} or only structural information in the form of single-category grammars \cite{Chiang2005}, e.g., the rule \emph{X $\rightarrow <$ ne X pas, does not X $>$}.  
 
 Single-category grammars work well in some circumstances.
-Their use alleviates data sparseness issues, allows the option of building partial translations that can then be combined serially, and eliminates the need for a noisy domain-specific parser.   
-However, by using only one category significant amounts of syntactic and context-specific information is discarded. 
+Their use alleviates data sparseness issues, allows the option of building partial translations that can then be combined serially, and eliminates the need for a noisy domain-specific parser \cite{Zollmann2006}.  
+However, by using only one category a significant amount of syntactic and context-specific information is discarded. 
 For example, the English word \emph{plant} can translate in Spanish to both \emph{f{\'a}brica} (a factory) or \emph{plantar} (i.e., to plant a tree), depending on the part-of-speech on the English side.  
 Therefore, a natural question is how we can refine synchronous grammars with learned latent categories that capture certain context-specific syntactic regularities, but without the use of hard syntactic constraints from a parser.  
 
 In this work, we propose to refine the synchronous grammars used in MT by incorporating additional context via a latent variable model featurized over inside and outside sub-trees of synchronous derivation trees for source-target sentence pairs.  
 We first generalize the concept of latent PCFGs to latent variable SCFGs (\S\ref{sec:formalism}), followed by a presentation of the tensor-based formulation for our parameters, a representation that makes it convenient to marginalize over latent states.  
 Subsequently, two methods for parameter estimation are presented (\S\ref{sec:estimation}): a spectral approach based on the method of moments, and an EM-based likelihood maximization approach.  
-Results on synthetic data and a Chinese-English evaluation set (\S\ref{sec:evaluation}) indicate significant gains over baselines and point to the promise of using latent variable synchronous grammars in conjunction with a smaller, simpler set of rules instead of unwieldy and bloated grammars extracted via existing heuristics, where a large number of context-independent but un-generalizable rules are obtained.  
+Results on synthetic data and a Chinese-English evaluation set (\S\ref{sec:evaluation}) indicate significant gains over baselines and point to the promise of using latent variable synchronous grammars in conjunction with a smaller, simpler set of rules instead of unwieldy and bloated grammars extracted via existing heuristics, where a large number of context-independent but un-generalizable rules are utilized.  
 
 Hence, the hope is that this work promotes the move towards translation models that directly model the conditional likelihood of translation rules via (potentially feature-rich) latent variable models which leverage information contained in the synchronous tree structure, instead of relying on the heuristic relative frequency parameter estimates \cite{Koehn2003} from non-hierarchical phrase-based translation.  
 
@@ -139,7 +139,7 @@ In this work, the aim is to refine the one-category grammar introduced by \newci
 Thus, the following discussion is restricted to these kinds of grammars, although the method is equally applicable in other scenarios, e.g., the extended tree-to-string transducer ({\bf xRs}) formalism \cite{Huang2006,Graehl2008} commonly used in syntax-directed translation.  
 An important point to keep in mind in comparison to L-PCFGs is that the right-hand side (RHS) non-terminals of synchronous rules are aligned pairs across the source and target languages.  
 
-A latent SCFG (L-SCFG) is a 6-tuple $(\mathcal{N}, m, n_s, n_t, \pi, t)$ where: 
+A latent variable SCFG (L-SCFG) is a 6-tuple $(\mathcal{N}, m, n_s, n_t, \pi, t)$ where: 
 \begin{itemizesquish}
   \item $\mathcal{N}$ is a set of non-terminal symbols in the grammar.  
   	For HPBT, the set consists of only two symbols, \bX~and a goal symbol \bS.  
@@ -152,9 +152,9 @@ A latent SCFG (L-SCFG) is a 6-tuple $(\mathcal{N}, m, n_s, n_t, \pi, t)$ where:
    
 $\bullet$ Binary rules ($\rules_2$): $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2 c(h_3) \alpha_3, \beta_1 b(h_2) \beta_2 c(h_3) \beta_3 \rangle$$ or $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2 c(h_3) \alpha_3, \beta_1 c(h_2) \beta_2 b(h_3) \beta_3 \rangle$$ where $a,b,c \in \mathcal{N}$, $h_1,h_2,h_3 \in [m]$, $\alpha_1,\alpha_2,\alpha_3 \in [n_s]^{\ast}$ and $\beta_1,\beta_2,\beta_3 \in [n_t]^{\ast}$.
 
-$\bullet$ Preterminal rules ($\rules_1$): $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2, \beta_1 b(h_2) \beta_2$$ where $a,b \in \mathcal{N}$, $h_1,h_2 \in [m]$, $\alpha_1,\alpha_2 \in [n_s]^{\ast}$ and $\beta,\beta_2 \in [n_t]^{\ast}$. 
+$\bullet$ Unary rules ($\rules_1$): $$a(h_1) \rightarrow \langle \alpha_1 b(h_2) \alpha_2, \beta_1 b(h_2) \beta_2$$ where $a,b \in \mathcal{N}$, $h_1,h_2 \in [m]$, $\alpha_1,\alpha_2 \in [n_s]^{\ast}$ and $\beta,\beta_2 \in [n_t]^{\ast}$. 
 
-$\bullet$ Terminal rules ($\rules_0$): $a(h_1) \rightarrow \langle \alpha, \beta \rangle$ where $a \in \mathcal{N}$, $\alpha \in [n_t]^{\ast}$ and $\beta \in [n_s]^{\ast}$.
+$\bullet$ Pre-terminal rules ($\rules_0$): $a(h_1) \rightarrow \langle \alpha, \beta \rangle$ where $a \in \mathcal{N}$, $\alpha \in [n_t]^{\ast}$ and $\beta \in [n_s]^{\ast}$.
 
 Each of these rules is associated with a probability $t(a(h_1) \rightarrow \gamma | a, h_1)$ where $\gamma$ is the right-hand side (RHS) of the rule.
 
@@ -172,7 +172,7 @@ For $a =\bX, b \in [n_s] \cup \mathcal{N} \setminus \{\bS\}, c \in [n_t]
         \end{itemize}
 }
          \item For $a \in \mathcal{N}$, $h \in [m]$, $\pi(a, h)$ is a parameter specifying the root probability of $a(h)$. 
-		 \avcomment{isn't it technically just $a = S$ for start of sentence?}
+		 %\avcomment{isn't it technically just $a = S$ for start of sentence?}
 \end{itemizesquish}
 %A skeletal tree (s-tree) for a sentence is a sequence of rules $r_1, \dots, r_N$ where each $r_i$ is of the form of one of the synchronous context-free rules above.\cjd{left most rewrite, relative to the source language? actually, isn't it easiest just to say it's the rules in a synchronous derivation, not decorated with latent state info?} 
 A skeletal tree (s-tree) for a sentence is the set of rules in the synchronous derivation of that sentence, without any additional latent state information or decoration.  
@@ -294,7 +294,7 @@ Note that matrix multiplication can be represented by $\times_1$ when multiplyin
 
 The decoder computes probabilities for each rule in the parse forest of a source sentence by marginalizing over the latent states, which in practice corresponds to simple tensor-vector products, and is not dependent on the manner in which the parameters were estimated. 
 Figure \ref{fig:hg_io_spec} presents the tensor version of the inside-outside algorithm for decoding L-SCFGs. 
-The algorithm takes as input the parse forest of the source sentence represented as a hypergraph \cite{Klein2001}, which is computed using a bottom-up parser with Earley-style rules (citation), similar to the CKY+ algorithm used in \newcite{Chiang2007}.  
+The algorithm takes as input the parse forest of the source sentence represented as a hypergraph \cite{Klein2001}, which is computed using a bottom-up parser with Earley-style rules \cite{Chappelier1998}, similar to the CKY+ algorithm used in \newcite{Chiang2007}.  
 Then, the algorithm computes inside and outside probabilities over the hypergraph using the tensor representations, and converts these probabilities to marginal rule probabilities.  
 It is similar to the version presented in \newcite{cohen-14b}, but adapted to hypergraph parse forests. 
  
@@ -552,13 +552,12 @@ The $m=1$ spectral baseline with only rule indicator features performs slightly 
 	  \multirow{4}{*}{Spectral} &  $m=1$ RI & 44.18 & 52.62 \\
 	  & $m=8$ RI & 44.60 & 53.63 \\
 	  & $m=16$ RI & 46.06 & 55.83 \\
-	  & $m=16$ RI+Lex+Sm & X & Y \\ 
-	  & $m=16$ RI+Lex+Len & 45.7 & 55.29 \\ 
-	  & $m=24$ RI+Lex & 43 & 51.28 \\ 
+	  & $m=16$ RI+Lex+Sm & 46.08 & 55.22 \\ 
+	  & $m=16$ RI+Lex+Len & 45.70 & 55.29 \\ 
+	  & $m=24$ RI+Lex & 43.00 & 51.28 \\ 
 	  & $m=32$ RI+Lex & 43.06 & 52.16 \\ \hline
-	  \multirow{2}{*}{EM} & $m=8$ X Iter & 38.61 & 46.62 \\
-	  & $m=16$ X Iter & 42.45 & 53.16 \\
-	  & $m=24$ X Iter & 41.33 & 51.55 \\
+	  \multirow{2}{*}{EM} & $m=8$ X Iter & 40.67 & 49.11 \\
+	  & $m=16$ X Iter & 42.69 & 52.91 \\
 	  & $m=32$ X Iter & X & Y \\
 	  \hline
 	\end{tabular}
