@@ -310,7 +310,9 @@ sped up using techniques described by \newcite{cohen-12c}, so that they are line
 
 \section{Parameter Estimation for L-SCFGs}
 \label{sec:estimation}
-We explore two methods for estimating the parameters $C^r$ of the model: a likelihood-maximization approach based on EM \cite{Dempster1977}, and a spectral approach based on the method of moments \cite{Hsu2009,cohen-14b}, where we identify a subspace using a singular value decomposition (SVD) \cite{Golub1996} of the cross-product feature space between inside and outside trees and estimate parameters in this subspace. 
+We explore two methods for estimating the parameters $C^r$ of the model: a likelihood-maximization approach based on EM \cite{Dempster1977}, and a spectral approach based on the method of moments \cite{Hsu2009,cohen-14b}, where we identify a subspace using a singular value decomposition (SVD)
+%\cite{Golub1996}
+of the cross-product feature space between inside and outside trees and estimate parameters in this subspace. 
 
 Figure \ref{fig:estimation-algos} presents a side-by-side comparison of the two algorithms, which we discuss in this section.  
 In the spectral approach, we base our parameter estimates on low-rank representations of moments of features, while EM explicitly maximizes a likelihood criterion. 
