@@ -105,7 +105,7 @@
 \begin{document}
 \maketitle
 \begin{abstract}
-  Abstract goes here.  
+Data-driven refinement of nonterminal categories has been demonstrated to be an reliable technique for improving monolingual parsing performance with PCFGs. In this paper, we extend these techniques to learn latent refinements of single-category synchronous grammars, so as to improve translation performance. We compare the performance of two estimators: one based on EM and the other on the method of moments, and evaluate their performance of the learned latent variable grammars on a Chinese--English translation task.
 \end{abstract}
 
 \section{Introduction}
@@ -113,7 +113,7 @@ Translation models based on synchronous context-free grammars treat the translat
 
 \ignore{
  based on synchronous context-free grammars are state-of-the-art in many language pairs and widely studied. Most systems rely on vast inventories of translation rules about multiword phrases (e.g., French to English: \emph{un chien Andalou} $\rightarrow$ \emph{an Andalusian dog}) in addition to more minimal units (\emph{chien} $\rightarrow$ \emph{dog}). 
-On top of these phrase-based approaches, the use of synchronous grammar-based formalisms \cite{Lewis1968} allows syntactic information to be explicitly incorporated in the translation process, either with category information \cite{Galley2004,SAMT,GregsTreeToStringStuff}, e.g., the French to English rule $\text{VP}\rightarrow \langle \textit{ne }\text{VB }\textit{pas}, \textit{does not }\text{VB}\rangle$ or only structural information in the form of single-category grammars \cite{Chiang2005}, e.g., the rule  $\text{X}\rightarrow \langle \textit{ne }\text{X }\textit{pas}, \textit{does not }\text{X}\rangle$.  
+On top of these phrase-based approaches, the use of synchronous grammar-based formalisms \cite{Lewis1968} allows syntactic information to be explicitly incorporated in the translation process, either with category information \cite{Galley2004,SAMT,GregsTreeToStringStuff}, e.g., the French to English rule $\text{VP}\rightarrow \langle \textit{ne }\text{VB }\textit{pas}, \textit{does not }\text{VB}\rangle$ or only structural information in the form of single-category grammars \cite{Chiang2007}, e.g., the rule  $\text{X}\rightarrow \langle \textit{ne }\text{X }\textit{pas}, \textit{does not }\text{X}\rangle$.  
 
 Single-category grammars work well in some circumstances.
 Their use alleviates data sparseness issues, allows the option of building partial translations that can then be combined serially, and eliminates the need for a noisy domain-specific parser \cite{Zollmann2006}.  
@@ -129,22 +129,18 @@ In this work, we take a slightly different approach to previous work in synchron
 \ignore{Our approach refines single-category (``Heiro'') synchronous grammars by incorporating additional context via a latent variable model, featurized over inside and outside sub-trees of synchronous derivation trees for source-target sentence pairs.  }
 We first generalize the concept of latent PCFGs to latent variable SCFGs (\S\ref{sec:formalism}). We then follow by a presentation of the tensor-based formulation for our parameters, a representation that makes it convenient to marginalize over latent states.  
 Subsequently, two methods for parameter estimation are presented (\S\ref{sec:estimation}): a spectral approach based on the method of moments, and an EM-based likelihood maximization.  
-Results on synthetic data and a Chinese-English evaluation set (\S\ref{sec:evaluation}) indicate significant gains over baselines and point to the promise of using latent variable synchronous grammars in conjunction with a smaller, simpler set of rules instead of unwieldy and bloated grammars extracted via existing heuristics, where a large number of context-independent but un-generalizable rules are utilized.  
+Results on a Chinese-English evaluation set (\S\ref{sec:evaluation}) indicate significant gains over baselines and point to the promise of using latent variable synchronous grammars in conjunction with a smaller, simpler set of rules instead of unwieldy and bloated grammars extracted via existing heuristics, where a large number of context-independent but un-generalizable rules are utilized.  
 
 Hence, the hope is that this work promotes the move towards translation models that directly model the conditional likelihood of translation rules via (potentially feature-rich) latent variable models which leverage information contained in the synchronous tree structure, instead of relying on the heuristic relative frequency parameter estimates \cite{Koehn2003} from non-hierarchical phrase-based translation.  
 
-\section{Latent Variable Models for Refinement}
+\section{Latent Variable SCFGs}
 \label{sec:formalism}
 
-The contribution of this paper is an algorithm for learning an implicit refinement of non-terminal categories in synchronous context-free grammar (SCFG), using a latent variable model.  
-\avcomment{shouldn't we say the contribution is more general, i.e., an approach? We present 2 algorithms for parameter estimation.}
-We first introduce latent-variable synchronous context-free grammars (L-SCFGs) and discuss how we acquire training examples of synchronous parse trees from word alignments, followed by a summary of the decoding algorithm for marginalizing over latent states, as it provides a natural way to introduce the data structures and representations used for the latent parameters.  
-The decoder is based on simple tensor-vector products that sum over the latent states.  
-Two methods to estimate the parameters will be discussed in \S\ref{sec:estimation}. 
+Before discussing parameter learning, we introduce latent-variable synchronous context-free grammars (L-SCFGs) and discuss an inference algorithm for marginalizing over latent states.  
+%The decoder is based on simple tensor-vector products that sum over the latent states.  
 
-\subsection{Latent-Variable SCFGs}
-We extend the definition of L-PCFGs \cite{Matsuzaki2005,Petrov2006} to synchronous grammars as used in machine translation \cite{Galley2004,Chiang2005}. 
-In this work, we refine the one-category grammar introduced by \newcite{Chiang2005} for hierarchical phrase-based translation (HPBT) in order to incorporate additional translational context via refined non-terminal (NT) categories instead of longer translation rules.  
+We extend the definition of L-PCFGs \cite{Matsuzaki2005,Petrov2006} to synchronous grammars as used in machine translation \cite{Chiang2007}. 
+In this work, we refine the one-category grammar introduced by \newcite{Chiang2007} for hierarchical phrase-based translation (HPBT) in order to incorporate additional translational context via refined non-terminal (NT) categories instead of longer translation rules.  
 \shaycomment{is it really true? it seenms to me like our definition is for general L-SCFGs with multiple non-terminals.}Thus, the following discussion is restricted to these kinds of grammars, although the method is equally applicable in other scenarios, e.g., the extended tree-to-string transducer ({\bf xRs}) formalism \cite{Huang2006,Graehl2008} commonly used in syntax-directed translation.  
 An important point to keep in mind in comparison to L-PCFGs is that the right-hand side (RHS) non-terminals of synchronous rules are aligned pairs across the source and target languages.  
 
@@ -188,33 +184,7 @@ A skeletal tree (s-tree) for a sentence is the set of rules in the synchronous d
 A full tree consists of an s-tree $r_1, \dots, r_N$ together with values $h_1, \dots, h_N$ for every NT in the tree.  
 %In HPBT, where only rules with at most two NTs in the RHS are used, the set of rules obtained from the training corpus $\rules$ can be further divided into three non-overlapping sets $\rules_0, \rules_1, \rules_2 \in \rules$, containing the pre-terminal, unary, and binary rules respectively.   
 
-\subsection{Minimal Grammar Extraction}
-\label{sec:mingrammar}
-To estimate the parameters $t$ and $\pi$ of an L-SCFG, we assume the existence of a dataset composed of synchronous s-trees, which can be acquired from word alignments.  
-Normally in phrase-based translation models, we consider all possible phrase pairs consistent with the word alignments and estimate features based on surface statistics associated with the phrase pairs or rules. 
-The weights of these features are then learned using some kind of discriminative training algorithm \cite{Och2003,Chiang2012}.  
-%a dataset composed of synchronous s-trees is required.\cjd{not required, but we assume we have it for simplicity's sake. we need to make clear what our assumptions are up front because this is quite different from how parameters are usually learned in translation models}
-In contrast, we restrict the number of possible synchronous derivations for each sentence pair to just one; thus, derivation forests do not have to be considered, making parameter estimation more tractable.  
-
-To achieve this objective, for each sentence in the training data we extract the {\bf minimal} set of synchronous rules consistent with the word alignments, as opposed to the {\bf composed} set of rules.  
-Composed rules are ones that can be formed out of smaller rules in the grammar; with these rules, there are multiple synchronous trees consistent with the alignments for a given sentence pair, and thus the total number of applicable rules can be combinatorially larger than if we just consider the set of rules that cannot be formed from other rules, namely the minimal rules.  
-The rule types across all sentence pairs are combined to form a minimal grammar.\footnote{In our experiments (\S\ref{sec:data}), a grammar extracted using the traditional Hiero heuristics was more than 80 times larger than the minimal grammar.} 
-
-%\shaycomment{
-%I want to rephrase your text below, because it does not make it clear that we are using minimal rules.
-%I am confused about the process though, is it that the Gildea algorithm extracts a minimal grammar or synchronous s-trees?
-%Can you also roughly describe how the algorithm works in a few key sentences?}
-%In order to learn the parameters $t$, we need a set of synchronous s-trees, which can be acquired from word alignments.  
-%For each rule $r_i$ in each s-tree, we can either compute partial counts in the expectation step of the EM algorithm, or extract second-order moments of features on which we compute an SVD.  
-%During the extraction phase, if we consider {\bf composed} rules, namely rules that can be formed out of smaller rules in the grammar, then there are multiple synchronous trees consistent with the alignments for a given sentence pair, and thus the total number of applicable rules can be combinatorially larger than if we just consider the set of {\bf minimal} rules i.e., rules that cannot be formed from other rules. 
-To extract a set of minimal rules for each word-aligned sentence pair, we use the linear-time extraction algorithm of \newcite{Zhang2008}.  
-This algorithm generalizes an approach for finding all common intervals (a pair of phrases such that no word pair in the alignment links a word inside the phrase to a word outside the phrase) between two permutations to sequences with many-to-many alignment links between the two sides, as in word alignment. 
-\avcomment{Should we talk about how rules with $>$ 2 NTs in the RHS are generated, and how we handle?}
-By using minimal rules as a starting point instead of the traditional heuristically-extracted rules \cite{Chiang2005} or arbitrary compositions of minimal rules \cite{Galley2006}, we are also able to explore the transition from minimal rules to composed ones in a principled manner by encoding contextual information through the latent states.   
-Thus, a beneficial side effect of our refinement process is the creation of more context-specific rules without increasing the overall size of the grammar.
-\cjd{make sure to cite Marino et al, operation sequence model, the Trevor Cohn Bayesian Markov sequence translation model, etc. they all make similar assumptions}
-\avcomment{OK, let me look at these papers tomorrow and put in the relevant shout-outs then.  Seems like you're implying it's better to cite them here than in Related because of the similar assumptions.}
-\subsection{Decoding}
+\paragraph{Marginal Inference with L-SCFGs.}
 \label{sec:decoding} 
 \begin{figure}[h!]
 	\begin{footnotesize}
@@ -232,7 +202,7 @@ Thus, a beneficial side effect of our refinement process is the creation of more
 
 		{\bf Algorithm:}
 		
-		(Inside Computation)
+		$\triangleright$ \emph{Inside Computation}
 		%(Inside base case) $\forall i \in [N], \;\; \alpha^{X, i, i} = \sum_{r \in \bX \rightarrow f_i} C^r$
 					
 		For nodes $q$ in topological order in $\mathcal{H}$,
@@ -248,7 +218,7 @@ Thus, a beneficial side effect of our refinement process is the creation of more
 				\end{itemize}
 				
 				
-		(Outside Computation)
+		$\triangleright$ \emph{Outside Computation}
 				
 		For $q \in \mathcal{H}$,
 		\begin{itemize}[label={},nolistsep]
@@ -272,7 +242,7 @@ Thus, a beneficial side effect of our refinement process is the creation of more
 		\end{itemize}
 			
 
-		\hbox{(Marginals)}
+		\hbox{$\triangleright$\emph{Edge Marginals}}
 		Sentence probability $g = \balpha(\textrm{goal}) \times \bbeta(\textrm{goal})$
 		
 		For edge $e \in \mathcal{H}$, 
@@ -303,11 +273,11 @@ Note that matrix multiplication can be represented by $\times_1$ when multiplyin
 
 The decoder computes probabilities for each rule in the parse forest of a source sentence by marginalizing over the latent states, which in practice corresponds to simple tensor-vector products, and is not dependent on the manner in which the parameters were estimated. 
 Figure \ref{fig:hg_io_spec} presents the tensor version of the inside-outside algorithm for decoding L-SCFGs. 
-The algorithm takes as input the parse forest of the source sentence represented as a hypergraph \cite{Klein2001}, which is computed using a bottom-up parser with Earley-style rules \cite{Chappelier1998}, similar to the CKY+ algorithm used in \newcite{Chiang2007}.  
+The algorithm takes as input the parse forest of the source sentence represented as a hypergraph \cite{Klein2001}, which is computed using a bottom-up parser with Earley-style rules similar to the algorithm in \newcite{Chiang2007}.  
 Then, the algorithm computes inside and outside probabilities over the hypergraph using the tensor representations, and converts these probabilities to marginal rule probabilities.  
 It is similar to the version presented in \newcite{cohen-14b}, but adapted to hypergraph parse forests. 
  
-The complexity of this decoding algorithm is $\mathcal{O}(n^3 m^3 |G|)$ where $n$ is the length of the input sentence, $|G|$ is the number of production rules in the grammar (without latent-variable annotations), and $m$ is the number of latent states.
+The complexity of this decoding algorithm is $\mathcal{O}(n^3 m^3 |G|)$ where $n$ is the length of the input sentence, $|G|$ is the number of production rules in the grammar \emph{without} latent-variable annotations (i.e., $1$ in this paper), and $m$ is the number of latent states.
 %The algorithm maintains its $\mathcal{O}(n^3|G|)$ complexity where $n$ is the length of the input sentence and $|G|$ is the size of the grammar; \shaycomment{what do you mean by the following? increase the number of rules compared to what? the grammar size is the same as what?} we do not increase the number of rules at all, so the grammar size is the same. 
 %But of course, there is no free lunch, and the additional computation gets shifted to the marginalization over latent states via the algorithm in Figure \ref{fig:hg_io_spec}.  
 %The bulk of the computation is a series of tensor-vector products of relatively small size (each dimension is of length $m$), which can be computed very quickly and in parallel.
@@ -316,6 +286,35 @@ The complexity of this decoding algorithm is $\mathcal{O}(n^3 m^3 |G|)$ where $n
 %In addition, 
 The tensor computations can be significantly
 sped up using techniques described by \newcite{cohen-12c}, so that they are linear in $m$ and not cubic.  
+
+
+
+\section{Derivation Trees for Parallel Sentences}
+\label{sec:mingrammar}
+To estimate the parameters $t$ and $\pi$ of an L-SCFG (discussed in detail in the next section), we assume the existence of a dataset composed of synchronous s-trees, which can be acquired from word alignments.  
+Normally in phrase-based translation models, we consider all possible phrase pairs consistent with the word alignments and estimate features based on surface statistics associated with the phrase pairs or rules. 
+The weights of these features are then learned using some kind of discriminative training algorithm \cite{Och2003,Chiang2012}.  
+%a dataset composed of synchronous s-trees is required.\cjd{not required, but we assume we have it for simplicity's sake. we need to make clear what our assumptions are up front because this is quite different from how parameters are usually learned in translation models}
+In contrast, we restrict the number of possible synchronous derivations for each sentence pair to just one; thus, derivation forests do not have to be considered, making parameter estimation more tractable.  
+
+To achieve this objective, for each sentence in the training data we extract the {\bf minimal} set of synchronous rules consistent with the word alignments, as opposed to the {\bf composed} set of rules.  
+Composed rules are ones that can be formed out of smaller rules in the grammar; with these rules, there are multiple synchronous trees consistent with the alignments for a given sentence pair, and thus the total number of applicable rules can be combinatorially larger than if we just consider the set of rules that cannot be formed from other rules, namely the minimal rules.  
+The rule types across all sentence pairs are combined to form a minimal grammar.\footnote{In our experiments (\S\ref{sec:data}), a grammar extracted using the traditional Hiero heuristics was more than 80 times larger than the minimal grammar.} 
+
+%\shaycomment{
+%I want to rephrase your text below, because it does not make it clear that we are using minimal rules.
+%I am confused about the process though, is it that the Gildea algorithm extracts a minimal grammar or synchronous s-trees?
+%Can you also roughly describe how the algorithm works in a few key sentences?}
+%In order to learn the parameters $t$, we need a set of synchronous s-trees, which can be acquired from word alignments.  
+%For each rule $r_i$ in each s-tree, we can either compute partial counts in the expectation step of the EM algorithm, or extract second-order moments of features on which we compute an SVD.  
+%During the extraction phase, if we consider {\bf composed} rules, namely rules that can be formed out of smaller rules in the grammar, then there are multiple synchronous trees consistent with the alignments for a given sentence pair, and thus the total number of applicable rules can be combinatorially larger than if we just consider the set of {\bf minimal} rules i.e., rules that cannot be formed from other rules. 
+To extract a set of minimal rules for each word-aligned sentence pair, we use the linear-time extraction algorithm of \newcite{Zhang2008}.  
+This algorithm generalizes an approach for finding all common intervals (a pair of phrases such that no word pair in the alignment links a word inside the phrase to a word outside the phrase) between two permutations to sequences with many-to-many alignment links between the two sides, as in word alignment. 
+\avcomment{Should we talk about how rules with $>$ 2 NTs in the RHS are generated, and how we handle?}
+By using minimal rules as a starting point instead of the traditional heuristically-extracted rules \cite{Chiang2007} or arbitrary compositions of minimal rules \cite{Galley2006}, we are also able to explore the transition from minimal rules to composed ones in a principled manner by encoding contextual information through the latent states.   
+Thus, a beneficial side effect of our refinement process is the creation of more context-specific rules without increasing the overall size of the grammar.
+\cjd{make sure to cite Marino et al, operation sequence model, the Trevor Cohn Bayesian Markov sequence translation model, etc. they all make similar assumptions}
+\avcomment{OK, let me look at these papers tomorrow and put in the relevant shout-outs then.  Seems like you're implying it's better to cite them here than in Related because of the similar assumptions.}
 
 \section{Parameter Estimation for L-SCFGs}
 \label{sec:estimation}
@@ -342,18 +341,18 @@ A function $\phi$ that maps inside trees $t$ to feature-vectors $\phi(t) \in \re
 	{\bf Algorithm:}
 	%If $\rione$ is of the form $\srule$, define $b_i$ to be the non-terminal for the left-child of $\rione$, and $c_i$ to be the non-terminal for the right-child.
 
-	(Step 0: Singular Value Decomposition)
+	$\triangleright$ \emph{Step 0: Singular Value Decomposition}
 	\begin{itemize}
 		\item Compute the SVD of Eq.~\ref{eq:outerproduct} to calculate matrices $\e{U} \in \reals^{(d \times m)}$ and $\e{V} \in \reals^{(d' \times m)}$.
 	\end{itemize}
 
-	(Step 1: Projection) 
+	$\triangleright$ \emph{Step 1: Projection}
 	\begin{align*}
 		Y(t) &= U^{\top} \phi(t)\\
 		Z(o) &= \Sigma^{-1} V^{\top} \psi(o)
 	\end{align*}
 
-	(Step 2: Calculate Correlations)
+	$\triangleright$ \emph{Step 2: Calculate Correlations}
 	\begin{align*}
 		\e{E}^r &= \begin{cases}
 			\frac{\sum_{o \in Q^r} Z(o)}{|Q^r|} &  \textrm{if }r \in \rules_0 \\
@@ -363,7 +362,7 @@ A function $\phi$ that maps inside trees $t$ to feature-vectors $\phi(t) \in \re
 	\end{align*}
 	$Q^r$ is the set of outside-inside tree triples for binary rules, outside-inside tree pairs for unary rules, and outside trees for pre-terminals.
 
-	(Step 3: Compute Final Parameters)
+	$\triangleright$ \emph{Step 3: Compute Final Parameters}
 	\begin{itemize}
 		\item For all $r \in \rules$, 
 			\begin{itemize}[label={}]
@@ -390,7 +389,7 @@ $\,$
 
 $\,$
 
-	\caption{\small The spectral learning algorithm for estimating parameters of an L-SCFG. \shaycomment{both figures appear as (a)?}}
+	\caption{\small The spectral learning algorithm for estimating parameters of an L-SCFG.}
 	\label{fig:splearn}
 	\end{subfigure}
 	%&
@@ -403,7 +402,7 @@ $\,$
 	{\bf Algorithm:}
 	%If $\rione$ is of the form $\srule$, define $b_i$ to be the non-terminal for the left-child of $\rione$, and $c_i$ to be the non-terminal for the right-child.
 
-	(Step 0: Parameter Initialization)
+	$\triangleright$ \emph{Step 0: Parameter Initialization}
 	
 	For rule $r \in \rules$,
 	\begin{itemize}[noitemsep]
@@ -420,10 +419,10 @@ $\,$
 	\begin{itemize}			
 		\item Expectation Step: 
 		 \begin{itemize}[label={}]
-			\item (Estimate $Y$ and $Z$) 
+			\item $\triangleright$ \emph{Estimate $Y$ and $Z$}
 			
 			Compute partial counts and total tree probabilities $g$ for all $t$ and $o$ using Fig.~\ref{fig:hg_io_spec} and parameters $\e{C}_{t-1}^r, \e{C}_{t-1}^\bS$.  
-			\item (Calculate Correlations) 
+			\item $\triangleright$ \emph{Calculate Correlations}
 				\begin{align*}
 					\e{E}^r &= \begin{cases}
 					\sum\limits_{o, g \in Q^r} \frac{Z(o)}{g} &\textrm{if }r \in \rules_0 \\
@@ -431,7 +430,7 @@ $\,$
 					\sum\limits_{\left(o,t^2,t^3,g\right) \in Q^r} \frac{Z(o) \otimes Y(t^2) \otimes Y(t^3)}{g} &\textrm{if }r \in \rules_2 
 					\end{cases}
 				\end{align*}
-			\item (Update Parameters)
+			\item $\triangleright$ \emph{Update Parameters}
 		 	\begin{itemize}[label={}]
 		 		\item For all $r \in \rules$, $\e{C}^r_t = \e{C}^r_{t-1} \odot \e{E}^r$
 		 		\item For all $\rione \in \{1, \dots, M\}$ such that $b^{(i)}$ is 1, $\e{C}^\bS_t = \e{C}^\bS_t + (\e{C}^\bS_{t-1} \odot Y(\rione)) / g $
@@ -450,11 +449,11 @@ $\,$
 	\label{fig:emlearn}	
 	\end{subfigure}		
 	\end{footnotesize}}
-	\caption{The two parameter estimation algorithms proposed for L-SCFGs. $\odot$ is the element-wise multiplication operator}
+	\caption{The two parameter estimation algorithms proposed for L-SCFGs; (\textbf{a}) method of moments; (\textbf{b}) expectation maximization. $\odot$ is the element-wise multiplication operator.\cjd{possible to get a vertical line?}}
 	\label{fig:estimation-algos}
 \end{figure*}
 
-\subsection{Spectral Moments-based Estimation}
+\subsection{Estimation with Spectral Moments}
 \label{sec:spectral} 
 We generalize the parameter estimation algorithm presented in \newcite{Cohen2013} to the synchronous or bilingual case. 
 The central concept of the spectral parameter estimation algorithm is to learn an $m$-dimensional representation of inside and outside trees by defining these trees in terms of features, in combination with a projection step (SVD), with the hope being that the lower-dimensional space captures the syntactic and semantic regularities among rules from the sparse feature space. 
@@ -481,7 +480,7 @@ The corresponding theoretical guarantees from \newcite{cohen-14b} can also be ge
 $\hat{\Omega}$ is an empirical estimate of the true covariance matrix $\Omega$, and if $\Omega$ has rank $m$, then the marginals computed using the spectrally-estimated parameters will converge to the true marginals.  
 The sample complexity for convergence is inversely proportional to the $m^{\textrm{th}}$ largest singular value.   
 
-\subsection{EM-based Estimation}
+\subsection{Estimation with EM}
 \label{sec:em}
 A likelihood maximization approach can also be used to learn the parameters of an L-SCFG.  
 Parameters are initialized by sampling each parameter value $\e{C}^r(h_1, h_2, h_3)$ from the interval $[0,1]$ uniformly at random.\footnote{In our experiments, we also tried the initialization scheme described in \newcite{Matsuzaki2005}, but found that it provided little benefit.}
@@ -537,29 +536,29 @@ We used a 4-gram language model built from the target-side of the parallel train
   %}
 \end{table}
 
-The baseline \textsc{hiero} system uses a grammar extracted by applying the commonly used heuristics \cite{Chiang2005}.  
+The baseline \textsc{hiero} system uses a grammar extracted by applying the commonly used heuristics \cite{Chiang2007}.  
 Each rule is decorated with two lexical and phrasal features corresponding to the forward $P(e|f)$ and backward $P(f|e)$ probabilities, along with the joint probability $P(e,f)$, the marginal probability of the source phrase $P(f)$, and whether the phrase pair or the source phrase is a singleton. 
 Weights for the language model (and language model OOV), glue rule, and word penalty are also tuned. 
 The minimal grammar maintains the same set of weights. 
 
-\subsection{Features}
+\subsection{Spectral Features}
 \label{sec:features}
 We use the following set of sparse, binary features in the spectral learning process:
-\begin{itemize}[noitemsep]
-	\item Rule Indicator: for the inside features, we consider the rule production containing the current non-terminal on the left-hand side, as well as the rules of the children (distinguishing between left and right children for binary rules).  
+\begin{itemizesquish}
+	\item \textbf{Rule Indicator.} For the inside features, we consider the rule production containing the current non-terminal on the left-hand side, as well as the rules of the children (distinguishing between left and right children for binary rules).  
 	For the outside features, we consider the parent rule production along with the rule production of the sibling (if it exists). 
-	\item Lexical: for both the inside and outside features, any lexical items that appear in the rule productions are recorded.  
+	\item \textbf{Lexical.} for both the inside and outside features, any lexical items that appear in the rule productions are recorded.  
 	Furthermore, we consider the first and last words of spans (left and right child spans for inside features, distinguishing between the two if both exist, and sibling span for outside features).  
 	Source and target words are treated separately. 
 	%\item Arity: the number of non-terminals present in inside tree and outside tree rules.  
-	\item Length: the span length of the tree and each of its children for inside features, and the span length of the parent and sibling for outside features. 	
-\end{itemize}
+	\item \textbf{Length.} the span length of the tree and each of its children for inside features, and the span length of the parent and sibling for outside features. 	
+\end{itemizesquish}
 %In addition to the sparse features, we also investigate the inclusion of real-valued features that are traditionally used in MT, e.g., lexical and phrasal forward and reverse probabilities. 
 
-\subsection{\textsc{ZH-EN} Experiments}
+\subsection{Chinese--English Experiments}
 Table \ref{tab:zh-en-results} presents a comprehensive evaluation of the \textsc{ZH-EN} experimental setup.  
 The first section consists of the various baselines we consider. 
-In addition to the standard HPBT setup \cite{Chiang2005}, we evaluate the minimal grammar baseline with the same set of features, as well as a setup where the spectral parameters simply consist of the joint maximum likelihood estimates of the rules.  
+In addition to the standard HPBT setup \cite{Chiang2007}, we evaluate the minimal grammar baseline with the same set of features, as well as a setup where the spectral parameters simply consist of the joint maximum likelihood estimates of the rules.  
 This baseline should perform \emph{en par} with the minimal grammar baseline, which we see is the case on the development set.  
 %Discuss improvement on test set in terms of P(f|e)? 
 Furthermore, in line with previous work \cite{Galley2006} which compares minimal and composed rules, we find that minimal grammars take a hit of more than 2.5 BLEU points on the development set, compared to composed (\textsc{hiero}) grammars.  
@@ -650,7 +649,7 @@ Furthermore, their estimation procedure is extremely expensive and is restricted
 
 Another approach is to explicitly attach a real-valued vector to each NT: \newcite{Huang2010} use an external source-language parser for this purpose and score rules based on the similarity between a source sentence parse and the information contained in this vector, which explicitly requires the integration of a good-quality source-language parser. 
 The EM-based algorithm that we propose here is similar to what they propose, except that we need to handle tensor structures.  
-\newcite{Mylonakis2011} learn a synchronous grammar through a cross-validated version of EM, but since they consider the source and target sentences jointly, their inside-outside algorithm is $\mathcal{O}(n^6)$.  
+\newcite{Mylonakis2011} select among linguistically motivated nonterminal labels with a cross-validated version of EM. Although they consider a restricted hypothesis space, they do marginalize over different derivations therefore their inside-outside algorithm is $\mathcal{O}(n^6)$.  
 
 The idea of automatically learned grammar refinements comes from the monolingual parsing literature, where phenomena like head lexicalization can be modeled through latent variables.  \newcite{Matsuzaki2005} look at a likelihood-based method to split the NT categories of a grammar into a fixed number of sub-categories, while \newcite{Petrov2006} learn a variable number of sub-categories per NT.  The latter's extension is not particularly applicable to single-category grammars, but may be useful for finding the optimal number of latent states from the data.  
 
@@ -665,9 +664,7 @@ Their model uses a Markov model where the parameters are Kneser-Ney smoothed \ci
 
 \section{Conclusion}
 
-In this work, we presented a scalable approach to refine synchronous grammars used in MT by inferring the latent categories for each non-terminal in our grammar rules.
-
-For future work, we would like to consider a more direct way to integrate the latent variable parameters in an MT setup.  
+In this work, we presented an approach to refine synchronous grammars used in MT by inferring the latent categories for the single nonterminal in our grammar rules. By fixing the synchronous derivations of each parallel sentence in the training data, it is possible to avoid many of the computationally issues associated with synchronous grammar induction. For future work, we will seek to relax this consideration and jointly reasoning both about nonterminal categories and derivation structures.
 
 % include your own bib file like this:
 \bibliographystyle{acl}
