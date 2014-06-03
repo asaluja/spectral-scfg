@@ -133,7 +133,7 @@ One popular approach has been to derive categories from source and/or target mon
 While often successful, accurate parsers are not available in many languages: a more appealing approach is therefore to learn the category structure from the data itself.
 
 In this work, we take a slightly different approach to previous work in synchronous grammar induction by assuming that reasonable tree structures for a parallel corpus can be chosen heuristically, and then, fixing the trees (thereby enabling us to sidestep the worst of the computational issues), we learn non-terminal categories as latent variables to explain the distribution of these synchronous trees. 
-This technique has a long history in monolingual parsing \cite{Petrov2006,Liang2007,Cohen2012a}, where it reliably yields state-of-the-art phrase structure parsers based on generative models, but we are the first to apply it to translation.
+This technique has a long history in monolingual parsing \cite{Petrov2006,Liang2007,cohen-14b}, where it reliably yields state-of-the-art phrase structure parsers based on generative models, but we are the first to apply it to translation.
 
 \ignore{Our approach refines single-category (``Hiero'') synchronous grammars by incorporating additional context via a latent variable model, featurized over inside and outside sub-trees of synchronous derivation trees for source-target sentence pairs.  }
 We first generalize the concept of latent PCFGs to latent variable SCFGs (\S\ref{sec:formalism}). We then follow by a presentation of the tensor-based formulation for our parameters, a representation that makes it convenient to marginalize over latent states.  
