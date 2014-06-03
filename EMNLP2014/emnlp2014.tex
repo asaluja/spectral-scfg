@@ -109,23 +109,33 @@
 \end{abstract}
 
 \section{Introduction}
-Statistical approaches to machine translation (MT) have achieved state-of-the-art results in many typologically diverse language pairs \cite{Bojar2013} by learning translation rules over longer multiword units or phrases (e.g., French to English: \emph{un chien Andalou} $\rightarrow$ \emph{an Andalusian dog}), instead of lexical or word units (\emph{chien} $\rightarrow$ \emph{dog}).  
-On top of these phrase-based approaches, the use of synchronous grammar-based formalisms \cite{Lewis1968} allows syntactic information to be explicitly incorporated in the translation process, either by taking into account both structural and categorical information \cite{Galley2004}, e.g., the French to English rule \emph{VP $\rightarrow <$ ne VB pas, does not VB $>$} or only structural information in the form of single-category grammars \cite{Chiang2005}, e.g., the rule \emph{X $\rightarrow <$ ne X pas, does not X $>$}.  
+Translation models based on synchronous context-free grammars treat the translation problem as an context free parsing problem. A parser constructs trees over the input sentence by parsing with the source language projection of a synchronous CFG, and each derivation induces translations in the target language \cite{Chiang2007}. However, in contrast to syntactic parsing, where linguistic intuitions can help elucidate the ``right'' tree structure for a grammatical sentence, no such intuitions are available for synchronous derivations, and so learning the ``right'' grammars is a central challenge.
+
+\ignore{
+ based on synchronous context-free grammars are state-of-the-art in many language pairs and widely studied. Most systems rely on vast inventories of translation rules about multiword phrases (e.g., French to English: \emph{un chien Andalou} $\rightarrow$ \emph{an Andalusian dog}) in addition to more minimal units (\emph{chien} $\rightarrow$ \emph{dog}). 
+On top of these phrase-based approaches, the use of synchronous grammar-based formalisms \cite{Lewis1968} allows syntactic information to be explicitly incorporated in the translation process, either with category information \cite{Galley2004,SAMT,GregsTreeToStringStuff}, e.g., the French to English rule $\text{VP}\rightarrow \langle \textit{ne }\text{VB }\textit{pas}, \textit{does not }\text{VB}\rangle$ or only structural information in the form of single-category grammars \cite{Chiang2005}, e.g., the rule  $\text{X}\rightarrow \langle \textit{ne }\text{X }\textit{pas}, \textit{does not }\text{X}\rangle$.  
 
 Single-category grammars work well in some circumstances.
 Their use alleviates data sparseness issues, allows the option of building partial translations that can then be combined serially, and eliminates the need for a noisy domain-specific parser \cite{Zollmann2006}.  
 However, by using only one category a significant amount of syntactic and context-specific information is discarded. 
 For example, the English word \emph{plant} can translate in Spanish to both \emph{f{\'a}brica} (a factory) or \emph{plantar} (i.e., to plant a tree), depending on the part-of-speech on the English side.  
 Therefore, a natural question is how we can refine synchronous grammars with learned latent categories that capture certain context-specific syntactic regularities, but without the use of hard syntactic constraints from a parser.  
+}
 
-In this work, we propose to refine the synchronous grammars used in MT by incorporating additional context via a latent variable model featurized over inside and outside sub-trees of synchronous derivation trees for source-target sentence pairs.  
+Of course, learning synchronous grammars from parallel data is a widely studied problem \cite[\emph{inter alia}]{Wu1997,Blunsom2008,Levenberg2012}. However, there has been less exploration of the learning rich nonterminal categories, largely because efforts to learn non-terminal categories have been coupled with efforts to learn derivation structures---a computationally formidable challenge.  One popular approach has been to derive categories from source and/or target monolingual grammars \cite{Galley2004,Zollmann2006,Hanneman2013}. However, while often successful, accurate parsers are not available in many languages: a more appealing approach is therefore to learn the category structure from the data itself.
+
+In this work, we take a slightly different approach to previous work in synchronous grammar induction by assuming that reasonable tree structures for a parallel corpus can be chosen heuristically, and then, fixing the trees (thereby enabling us to sidestep the worst of the computational issues), we learn non-terminal categories as latent variables to explain the distribution of these synchronous trees. This technique has a long history in monolingual parsing \cite{Petrov2006,Liang2007,Cohen2012a}, where it reliably yields state-of-the-art phrase structure parsers based on generative models, but we are the first to apply it to translation.\cjd{true?}
+
+\ignore{Our approach refines single-category (``Heiro'') synchronous grammars by incorporating additional context via a latent variable model, featurized over inside and outside sub-trees of synchronous derivation trees for source-target sentence pairs.  }
 We first generalize the concept of latent PCFGs to latent variable SCFGs (\S\ref{sec:formalism}). We then follow by a presentation of the tensor-based formulation for our parameters, a representation that makes it convenient to marginalize over latent states.  
-Subsequently, two methods for parameter estimation are presented (\S\ref{sec:estimation}): a spectral approach based on the method of moments, and an EM-based likelihood maximization approach.  
+Subsequently, two methods for parameter estimation are presented (\S\ref{sec:estimation}): a spectral approach based on the method of moments, and an EM-based likelihood maximization.  
 Results on synthetic data and a Chinese-English evaluation set (\S\ref{sec:evaluation}) indicate significant gains over baselines and point to the promise of using latent variable synchronous grammars in conjunction with a smaller, simpler set of rules instead of unwieldy and bloated grammars extracted via existing heuristics, where a large number of context-independent but un-generalizable rules are utilized.  
 
 Hence, the hope is that this work promotes the move towards translation models that directly model the conditional likelihood of translation rules via (potentially feature-rich) latent variable models which leverage information contained in the synchronous tree structure, instead of relying on the heuristic relative frequency parameter estimates \cite{Koehn2003} from non-hierarchical phrase-based translation.  
 
 \section{Latent Variable Models for Refinement}
+\label{sec:formalism}
+
 The contribution of this paper is an algorithm for learning an implicit refinement of non-terminal categories in synchronous context-free grammar (SCFG), using a latent variable model.  
 \avcomment{shouldn't we say the contribution is more general, i.e., an approach? We present 2 algorithms for parameter estimation.}
 We first introduce latent-variable synchronous context-free grammars (L-SCFGs) and discuss how we acquire training examples of synchronous parse trees from word alignments, followed by a summary of the decoding algorithm for marginalizing over latent states, as it provides a natural way to introduce the data structures and representations used for the latent parameters.  
@@ -133,7 +143,6 @@ The decoder is based on simple tensor-vector products that sum over the latent s
 Two methods to estimate the parameters will be discussed in \S\ref{sec:estimation}. 
 
 \subsection{Latent-Variable SCFGs}
-\label{sec:formalism}
 We extend the definition of L-PCFGs \cite{Matsuzaki2005,Petrov2006} to synchronous grammars as used in machine translation \cite{Galley2004,Chiang2005}. 
 In this work, we refine the one-category grammar introduced by \newcite{Chiang2005} for hierarchical phrase-based translation (HPBT) in order to incorporate additional translational context via refined non-terminal (NT) categories instead of longer translation rules.  
 \shaycomment{is it really true? it seenms to me like our definition is for general L-SCFGs with multiple non-terminals.}Thus, the following discussion is restricted to these kinds of grammars, although the method is equally applicable in other scenarios, e.g., the extended tree-to-string transducer ({\bf xRs}) formalism \cite{Huang2006,Graehl2008} commonly used in syntax-directed translation.  
