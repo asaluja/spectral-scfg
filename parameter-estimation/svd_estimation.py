@@ -38,6 +38,7 @@ inFeatIDs = {} #key: feature (string), value: feature ID
 inFeatID = 0
 outFeatIDs = {} #same as inFeatIDs
 outFeatID = 0
+
 def main():
     featBinDict = {}
     (opts, args) = getopt.getopt(sys.argv[1:], 'ac:f:lLmor:s:')
@@ -47,6 +48,7 @@ def main():
         elif opt[0] == '-c': #lexical class features
             filenames = opt[1].split(':')
             featBinDict["classF"] = readInWordClasses(filenames)
+            srcClasses = featBinDict["classF"][0]
         elif opt[0] == '-f': #filter rules
             featBinDict["filterRules"] = int(opt[1])
         elif opt[0] == '-l': #lexical features
@@ -88,41 +90,6 @@ def main():
     sys.stderr.write("SVD and projections complete. Time taken: %.3f sec\n"%timeTaken)    
     start = time.clock()
     paramDict, countDict = computeCorrelationsAndSmooth(Y, Z, featBinDict["smooth"]) if "smooth" in featBinDict else computeCorrelations(Y, Z) #compute tensors, matrices, and vectors
-
-    #below code for conditional prob write out
-    '''
-    normalizer = 0
-    for srcKey in paramDict:
-        normalizer = sum([countDict[srcKey][tgtKey] for tgtKey in paramDict[srcKey]])
-        for tgtKey in paramDict[srcKey]:
-            cond_prob = countDict[srcKey][tgtKey] / float(normalizer)
-            paramDict[srcKey][tgtKey] = np.multiply(paramDict[srcKey][tgtKey], cond_prob)
-    '''
-    #cond prob write out code end
-    #below code for tensor debugging
-    '''
-    G = np.random.random_sample((rank, rank))
-    G = G + G.transpose()
-    Ginv = np.linalg.inv(G)
-    for src_RHS in paramDict:
-        if src_RHS == "Pi":
-            paramDict[src_RHS] = np.absolute(paramDict[src_RHS]).dot(Ginv)
-        else:
-            for target_RHS in paramDict[src_RHS]:
-                parameter = np.absolute(paramDict[src_RHS][target_RHS])
-                arity = len(parameter.shape) - 1
-                if arity == 0:
-                    paramDict[src_RHS][target_RHS] = G.dot(parameter)
-                elif arity == 1:
-                    paramDict[src_RHS][target_RHS] = G.dot(parameter).dot(Ginv)
-                elif arity == 2:
-                    result = np.tensordot(G, parameter, axes=[1,0])
-                    result = np.tensordot(Ginv, result, axes=[1,1]).swapaxes(0,1)
-                    result = np.tensordot(Ginv, result, axes=[1,2]).swapaxes(1,2)
-                    paramDict[src_RHS][target_RHS] = result
-    '''    
-    #tensor debugging end
-
     paramDict['Pi'] = estimatePiParams(root_rules, Y, rank) 
     assignProbMassToOOVs("OOV" in featBinDict, paramDict, countDict, singletons)
     timeTaken = time.clock() - start
@@ -267,7 +234,6 @@ def estimatePiParams(root_rules, Y, rank):
     for row_idx in root_rules:
         outerProd += Y[row_idx,:].transpose()
     outerProd = np.multiply(outerProd, 1.0/len(root_rules))
-    #outerProd = np.multiply(outerProd, 1.0/Y.shape[0])
     return outerProd
 
 '''
@@ -419,8 +385,6 @@ def normalizeCountDict(countDict):
     for srcKey in countDict: 
         for tgtKey in countDict[srcKey]:
             countDict[srcKey][tgtKey] /= float(normalizer)
-        print "Source key: %s"%(srcKey)
-        print "Target distribution: "
         print countDict[srcKey]
     return countDict
 

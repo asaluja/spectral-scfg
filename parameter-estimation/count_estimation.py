@@ -1,9 +1,13 @@
 #!/usr/bin/python -tt
 
 '''
-Description for file here. 
-
-28 May: Removed addone functionality, shifted it to featurize_rules.py
+File: count_estimation.py
+Date: May 25, 2014
+Description: simple file that, given a 'full' directory (namely, 
+a derivation tree for every sentence pair with the rules for every
+NT written out), estimates the counts for every rule.  In this   code, 
+we filter all rules with number of NTs > 2 on the RHS.  
+Update: 28 May: Removed addone functionality, shifted it to featurize_rules.py
 '''
 
 import sys, commands, string, cPickle, os, gzip, re, getopt
@@ -72,13 +76,28 @@ def IncrementCountsByLine(filehandle):
 
 def WriteOutCounts(fileout):
     reformatted = {}
+    binary = 0
+    unary = 0
+    preterm = 0
     for rule in Counts:
+        arity = CheckArity(rule) #first, keep track of the counts of rules across pre-term, unary, and binary
+        if arity == 0: 
+            preterm += 1
+        elif arity == 1:
+            unary += 1
+        elif arity == 2:
+            binary += 1
+        else:
+            sys.stderr.write("Error! Writing out rule with # of NTs on RHS > 2!\n")
         srcKey = ' ||| '.join(rule.split(' ||| ')[:-1])
         tgtKey = rule.split(' ||| ')[-1]
         srcDict = reformatted[srcKey] if srcKey in reformatted else {}
         srcDict[tgtKey] = Counts[rule]
         reformatted[srcKey] = srcDict
     cPickle.dump(reformatted, open(fileout, "wb"))
+    print "Number of pre-terminal rules (including singletons): %d"%preterm
+    print "Number of unary rules: %d"%unary
+    print "Number of binary rules: %d"%binary
 
 def main():
     (opts, args) = getopt.getopt(sys.argv[1:], 'n:')

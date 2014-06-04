@@ -10,13 +10,14 @@ Write more detailed explanation here.
 
 import sys, commands, string, gzip, getopt, cPickle, os, re, math, Queue, time
 import numpy as np
+#np.seterr(under='raise')
 import multiprocessing as mp
 from tree import tree
 
 params = {} #current set of parameters is global
 counts = {}
 epsilon = 1e-15
-
+scaling = 1
 '''
 Given 3 vectors, computes tensor product (generalized 3-way outer product)
 '''
@@ -44,7 +45,7 @@ modes of the tensor) and normalizes for every h1.
 Similarly, for unary rules with matrices, we sum over all columns
 for a given row and normalize, and for vectors we just normalize by
 the sum of the vector. 
-NOTE: we are not using this function anymore
+NOTE: we are not using this function anymore, deprecated
 '''
 def NormalizeParam(unnormalized):
     order = len(unnormalized.shape)
@@ -106,7 +107,7 @@ def InitCounts(training_tree, rank):
         else: #filtered out invalid trees when reading in, so this should never fire 
             sys.stderr.write("Rule %s has more than 2 NTs, not included in parameter dictionary\n"%training_tree.rule)
         if unnormalized is not None:
-            params[training_tree.rule] = unnormalized
+            params[training_tree.rule] = unnormalized 
             #params[training_tree.rule] = NormalizeParam(unnormalized)
     for child in training_tree.children: #at this stage, recurse on children
         InitCounts(child, rank)
@@ -148,25 +149,15 @@ def ComputeInside(training_tree, OOV, alpha):
     for child in training_tree.children:
         alpha_children.append(ComputeInside(child, OOV, alpha))
     arity = len(training_tree.children)
-    print "rule is: %s"%training_tree.rule
     if arity == 0:
         alpha[training_tree] = params["[X] ||| <unk> ||| <unk>"] if OOV and counts[training_tree.rule] == 1 else params[training_tree.rule]
-        print "alpha is: "
-        print alpha[training_tree]
     elif arity == 1:
         alpha[training_tree] = params[training_tree.rule].dot(alpha_children[0]); 
-        print "parameters involved in dot product: "
-        print params[training_tree.rule]
-        print alpha[children[0]]
     elif arity == 2:
         x1_alpha = alpha_children[0]
         x2_alpha = alpha_children[1]
         result = np.tensordot(x2_alpha, params[training_tree.rule], axes=[0,2])
         alpha[training_tree] = result.dot(x1_alpha)
-        print "parameters involved in tensor dot product: "
-        print params[training_tree.rule]
-        print alpha_children[0]
-        print alpha_children[1]
     return alpha[training_tree]
 
 def ComputeOutside(training_tree, alpha, beta):
@@ -214,8 +205,6 @@ def InsideOutside(training_examples, OOV, out_q):
         ComputeOutside(training_tree, alpha, beta)
         alpha_beta_dict = {}
         ConvertToTripleDict(training_tree, OOV, alpha, beta, alpha_beta_dict)
-        print "Alpha top: "
-        print alpha_beta_dict["Root"]
         ins_out_probs.append(alpha_beta_dict)
     out_q.put(ins_out_probs)
 
@@ -225,12 +214,14 @@ minimal tree is stored in ab_list (indexed by sentence, each entry is a dict).
 '''
 def UpdateParameters(ab_list):
     new_params = {}
-    pi = params["Pi"]
     ll = 0
+    count = 0
     for tree_dict in ab_list: #indexed per sentence
-        g = tree_dict["Root"].dot(pi)
-        print "g: %.3f"%g
+        g = tree_dict["Root"].dot(params["Pi"])        
         ll += math.log(g)
+        count += 1
+        if g == 0:
+            print "normalizer = 0 for example number %d"%count
         for rule in tree_dict: #for each minimal rule for the sentence, have inside/outside probs of spans
             if rule != "Root":
                 arity = CheckArity(rule)
@@ -245,8 +236,8 @@ def UpdateParameters(ab_list):
                     else:
                         sys.stderr.write("Fatal error! Found rule with arity > 2 while updating parameters\n")
                         sys.exit()
-                    result = np.divide(result, g)
                     result = np.multiply(params[rule], result)
+                    result = np.divide(result, g)
                     if rule in new_params:
                         new_params[rule] += result
                     else:
@@ -255,12 +246,12 @@ def UpdateParameters(ab_list):
     return new_params
 
 def UpdatePiParameters(ins_out_probs, new_params):
-    pi = params["Pi"]
-    new_pi = np.zeros(pi.shape)
+    param = params["Pi"]
+    new_pi = np.zeros(param.shape)
     for alpha_beta_dict in ins_out_probs:
         alpha_top = alpha_beta_dict["Root"]
-        g = alpha_top.dot(pi)
-        new_pi += np.divide(np.multiply(alpha_top, pi), g)
+        g = alpha_top.dot(param)
+        new_pi += np.divide(np.multiply(alpha_top, param), g)
     new_params["Pi"] = new_pi
 
 def ExpectationStep(training_examples, OOV, numProc):
@@ -285,29 +276,32 @@ def ExpectationStep(training_examples, OOV, numProc):
 
 def MaximizationStep(paramDict, rank):
     normalizer = np.zeros((rank,))
+    normalizer_pi = np.zeros((rank,))
     for rule in paramDict: #first loop to compute the normalizer for a fixed h1
-        paramDict[rule] += epsilon #add a small constant to improve numerical stability
-        #zero_idx = paramDict[rule] < epsilon
-        #paramDict[rule][zero_idx] = 0
         order = len(paramDict[rule].shape)
-        for h1 in xrange(0, rank):
-            if order == 3:
-                normalizer[h1] += np.sum(paramDict[rule][h1, :, :])
-            elif order == 2:
-                normalizer[h1] += np.sum(paramDict[rule][h1,:])
-            elif order == 1:
-                normalizer[h1] += paramDict[rule][h1]
-    print "Normalizer is: "
-    print normalizer
-    for rule in paramDict:
+        if rule == "Pi": #normalize separately
+            normalizer_pi = np.sum(paramDict[rule])
+        else:
+            for h1 in xrange(0, rank):
+                if order == 3:
+                    normalizer[h1] += np.sum(paramDict[rule][h1, :, :])
+                elif order == 2:
+                    normalizer[h1] += np.sum(paramDict[rule][h1,:])
+                elif order == 1:
+                    normalizer[h1] += paramDict[rule][h1]
+    for rule in paramDict: #then loop through and rescale each parameter
         order = len(paramDict[rule].shape)
-        for h1 in xrange(0, rank):
-            if order == 3:
-                paramDict[rule][h1,:,:] = np.divide(paramDict[rule][h1,:,:], normalizer[h1])
-            elif order == 2:
-                paramDict[rule][h1,:] = np.divide(paramDict[rule][h1,:], normalizer[h1])
-            elif order == 1:
-                paramDict[rule][h1] = np.divide(paramDict[rule][h1], normalizer[h1])
+        if rule == "Pi":
+            paramDict[rule] = np.divide(paramDict[rule], normalizer_pi)
+        else:
+            for h1 in xrange(0, rank):
+                if order == 3:
+                    paramDict[rule][h1,:,:] = np.divide(paramDict[rule][h1,:,:], normalizer[h1])                
+                elif order == 2:
+                    paramDict[rule][h1,:] = np.divide(paramDict[rule][h1,:], normalizer[h1])
+                elif order == 1:
+                    paramDict[rule][h1] = np.divide(paramDict[rule][h1], normalizer[h1])
+        paramDict[rule] = np.multiply(paramDict[rule], scaling)
 
 def AddOOVParameter(rank, matsu, mle_params):
     if matsu:
@@ -321,29 +315,29 @@ def AddOOVParameter(rank, matsu, mle_params):
         unnormalized *= mle_param
     else:
         unnormalized = np.random.random_sample((rank,))
+    params["[X] ||| <unk> ||| <unk>"] = unnormalized
     #params["[X] ||| <unk> ||| <unk>"] = NormalizeParam(unnormalized)
 
 def WriteOutParameters(filename, isFilter, filteredRules):
     param_writeout = {}
     num_params = 0
     preterm_singletons = [k for k,v in counts.items() if v == 1 and CheckArity(k) == 0] 
-    #print "Preterm singletons: "
-    #for singleton in preterm_singletons:
-    #    print singleton
     OOV_param = params["[X] ||| <unk> ||| <unk>"]
     avgOOV_param = np.divide(OOV_param, len(preterm_singletons)+1)
+    avgOOV_param = np.divide(avgOOV_param, scaling)
     for param in params: #unk not in params??
+        temp_param = np.divide(params[param], scaling)
         if param != "Pi":
             srcKey = ' ||| '.join(param.split(' ||| ')[:-1])
             tgtKey = param.split(' ||| ')[-1]
             srcDict = param_writeout[srcKey] if srcKey in param_writeout else {}
             if isFilter:
                 if srcKey in filteredRules and tgtKey in filteredRules[srcKey]:
-                    srcDict[tgtKey] = avgOOV_param if param == "[X] ||| <unk> ||| <unk>" or param in preterm_singletons else params[param]
+                    srcDict[tgtKey] = avgOOV_param if param == "[X] ||| <unk> ||| <unk>" or param in preterm_singletons else temp_param
                     num_params += 1
                     param_writeout[srcKey] = srcDict
             else:
-                srcDict[tgtKey] = avgOOV_param if param == "[X] ||| <unk> ||| <unk>" or param in preterm_singletons else params[param]
+                srcDict[tgtKey] = avgOOV_param if param == "[X] ||| <unk> ||| <unk>" or param in preterm_singletons else temp_param
                 num_params += 1
                 param_writeout[srcKey] = srcDict
         else:
@@ -353,7 +347,7 @@ def WriteOutParameters(filename, isFilter, filteredRules):
     cPickle.dump(param_writeout, open(filename, "wb"))
             
 def main():
-    global params, counts
+    global params, counts, scaling
     optsDict = {}
     (opts, args) = getopt.getopt(sys.argv[1:], 'f:m:n:o')
     for opt in opts:
@@ -367,6 +361,7 @@ def main():
             optsDict["OOV"] = 1
     minrule_grammars_loc = args[0]
     rank = int(args[1])
+    scaling = int(args[4])
     if "numProc" not in optsDict:
         optsDict["numProc"] = 4 #default value for numProc
 
@@ -424,8 +419,8 @@ def main():
         if "OOV" not in optsDict:
             params["[X] ||| <unk> ||| <unk>"] = np.zeros((rank,))
         print "Number of params in new params: %d"%len(new_params)
-        if (iterNum + 1)%1 == 0: #write out every 10 iterations
-            WriteOutParameters(outDir + "/em.iter%d.params"%iterNum, "filter" in optsDict, filteredRules)
+        if (iterNum + 1)%5 == 0: #write out every 10 iterations
+            WriteOutParameters(outDir + "/em.iter%d.params"%(iterNum+1), "filter" in optsDict, filteredRules)
         timeTaken = time.clock() - start_iter
         print "Iteration %d complete. Time taken: %.3f sec"%(iterNum+1, timeTaken)
         start_iter = time.clock()

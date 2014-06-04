@@ -22,7 +22,7 @@ cp $devSrc ${working}/dev.src
 mkdir ${working}/rank${rank}-dev/
 python ${scripts}/parser/compute_hg.py -s -t -f $params $rank ${working}/dev.src $numProc ${working}/rank${rank}-dev/
 mkdir ${working}/dec-rank${rank}-dev/
-python ${scripts}/minrule-extraction/featurize_rules.py -m ${working}/rank${rank}-dev/ $devGrammar ${working}/dec-rank${rank}-dev/ $counts $lexModel $numProc
+python ${scripts}/minrule-extraction/featurize_rules.py -a -m ${working}/rank${rank}-dev/ $devGrammar ${working}/dec-rank${rank}-dev/ $counts $lexModel $numProc
 rm -rf ${working}/rank${rank}-dev/
 python ${scripts}/scripts/corpus2sgm.py ${working}/dec-rank${rank}-dev/ < $devSrcTgt > ${working}/dev.sgm
 rm ${working}/dev.src
@@ -33,7 +33,7 @@ cp $testSrc ${working}/devtest.src
 mkdir ${working}/rank${rank}-devtest/
 python ${scripts}/parser/compute_hg.py -s -t -f $params $rank ${working}/devtest.src $numProc ${working}/rank${rank}-devtest/
 mkdir ${working}/dec-rank${rank}-devtest/
-python ${scripts}/minrule-extraction/featurize_rules.py -m ${working}/rank${rank}-devtest/ $testGrammar ${working}/dec-rank${rank}-devtest/ $counts $lexModel $numProc
+python ${scripts}/minrule-extraction/featurize_rules.py -a -m ${working}/rank${rank}-devtest/ $testGrammar ${working}/dec-rank${rank}-devtest/ $counts $lexModel $numProc
 rm -rf ${working}/rank${rank}-devtest/
 python ${scripts}/scripts/corpus2sgm.py ${working}/dec-rank${rank}-devtest/ < $testSrcTgt > ${working}/devtest.sgm
 rm ${working}/devtest.src

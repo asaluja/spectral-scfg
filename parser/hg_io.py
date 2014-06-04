@@ -134,13 +134,6 @@ def nodeMarginals(alpha, beta, normalizer, hg, flipSign, rank, words):
                 sys.stderr.write("Error! Marginal of span [%d,%d] outside of range: %.5g\n"%(hg.nodes_[nodeID].i, hg.nodes_[nodeID].j, marginals[nodeID]))
                 return marginals
         marginals[(node.i, node.j)] = marginal #key is the cell in the parse chart
-        #for inEdgeID in node.in_edges_: #the same marginal is used for all incoming edges (rules)
-        #    key = ' ||| '.join([node.cat, hg.edges_[inEdgeID].rule])
-        #    src_decorated = decorateSrcRule(hg, inEdgeID)
-        #    for target_rule in paramDict[key]:
-        #        src_tgt_decorated = "<unk> ||| %s"%(words[node.i]) if target_rule == "<unk>" else "%s ||| %s"(src_decorated, decorateTgtRule(target_rule))
-        #        lhs_src_tgt = ' ||| '.join([LHS, src_tgt_decorated])
-        #        marginals[lhs_src_tgt] = marginal #associate the marginal to each rule
     return marginals, flipped
 
 '''

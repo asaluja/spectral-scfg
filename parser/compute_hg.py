@@ -56,10 +56,6 @@ for opt in opts:
 params_fh = open(args[0], 'rb')
 paramDict = cPickle.load(params_fh) #key is 'LHS ||| src RHS'
 grammar_rules = [rule for rule in paramDict.keys() if rule != "Pi"] #Pi contains the start of sentence params
-for srcKey in paramDict:
-    if srcKey != "Pi":
-        for tgtKey in paramDict[srcKey]:
-            print ' ||| '.join([srcKey, tgtKey])
 grammarTrie = trie(grammar_rules) 
 rank = int(args[1])
 inputFile = open(args[2], 'r').readlines()
@@ -194,17 +190,18 @@ def printHeatMap(marginals, words, outFile):
     cmap = plt.cm.get_cmap('RdBu')
     cmap.set_bad('w')
     im = ax.pcolor(heatmap, cmap=cmap, alpha=0.8)
+    font = mpl.font_manager.FontProperties(fname='/usr0/home/avneesh/spectral-scfg/data/wqy-microhei.ttf')
     ax.grid(True)
     ax.set_ylim([0,N])
     ax.invert_yaxis()
     ax.set_yticks(np.arange(heatmap.shape[1]-1)+0.5, minor=False)
-    ax.set_yticklabels(words_uni, minor=False)
+    ax.set_yticklabels(words_uni, minor=False, fontproperties=font)
     ax.set_xticks(np.arange(heatmap.shape[0])+0.5, minor=True)
     ax.set_xticklabels(np.arange(heatmap.shape[0]), minor=True)
     ax.set_xticks([])
     cbar = fig.colorbar(im, use_gridspec=True)
     cbar.set_label('ln(sum)')
-    ax.set_xlabel('Span Length')
+    ax.set_xlabel('Span End')
     ax.xaxis.set_label_position('top')
     ax.xaxis.tick_top()
     plt.ylabel('Span starting at word: ')

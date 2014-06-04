@@ -13,7 +13,7 @@ Arg1: list of invalid rules
 Arg2: directory where guaranteed binary minimal rules are
 Arg3: directory where ZGC rules are
 Arg4: output directory
-Usage: 
+Usage: python combine_minimal_grammars.py invalid_rules guaranteed_binary_dir/  ZGC_rules_dir/   output_dir/
 '''
 
 import sys, commands, string, os, gzip, re

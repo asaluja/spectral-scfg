@@ -198,7 +198,6 @@ def decorateSentenceGrammar(minRule_file, hiero_file, out_file, lex_model, optDi
                 out_fh.write("%s\n"%ruleToPrint)
         else:
             seen_rules.extend(rules_output)  #global write
-            #print "for grammar %s, out of %d rules, %d are also in hiero"%(minRule_file, numRulesTotal, numRulesInHiero)
         print "Grammar %s featurization complete: %d rules"%(minRule_file, numRulesTotal)
     if perSent and not marginal: #add the NT only rules, but only if we're not reading in marginals (since we already have the NT rules), then close
         out_fh.write("[X] ||| [X,1] [X,2] ||| [1] [2] ||| Glue=1\n")
@@ -242,8 +241,8 @@ def main():
     else:
         pool = mp.Pool(numProcesses)
     for minRule_file in minRule_grammars:
-        #decorateSentenceGrammar(minRule_grammars_loc + minRule_file, hiero_grammars_loc + minRule_file, outFile_loc + minRule_file, lex_model, optDict)
-        pool.apply_async(decorateSentenceGrammar, (minRule_grammars_loc + minRule_file, hiero_grammars_loc + minRule_file, outFile_loc + minRule_file, lex_model, optDict))    
+        decorateSentenceGrammar(minRule_grammars_loc + minRule_file, hiero_grammars_loc + minRule_file, outFile_loc + minRule_file, lex_model, optDict)
+        #pool.apply_async(decorateSentenceGrammar, (minRule_grammars_loc + minRule_file, hiero_grammars_loc + minRule_file, outFile_loc + minRule_file, lex_model, optDict))    
     pool.close()
     pool.join()                             
 
