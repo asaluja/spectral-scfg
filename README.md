@@ -79,43 +79,43 @@ Input: parallel sentence corpus (tokenized, lower-cased). Assume all code is run
 
 7. Parameter estimation can be done in one of three ways:
 
-   - SVD-based estimation:
+   * SVD-based estimation:
 
    ```
    python parameter-estimation/svd_estimation.py minrule.entire.grammar/ feature_list rank parameters > training.rules.with.rowIdxs
    ```
 
    Flags (rule indicator features always used):
-	- `-o`: estimate OOV probabilities (recommended)
-	- `-f X`: filter rules to top X sorted by P(e|f) (recommended)
-	- `-a`: arity feature
-	- `-l`: lexical feature
-	- `-c X`: class-based lexical feature (word IDs are replaced by class IDs); classes for both languages should be provided in the format `-c source-file:target-file`
-	- `-L`: span length feature
-	- `-r X`: real-valued features (not fully supported)
-	- `-s X`: smoothing of parameters, with hyperparameter value X
+     - `-o`: estimate OOV probabilities (recommended)
+     - `-f X`: filter rules to top X sorted by P(e|f) (recommended)
+     - `-a`: arity feature
+     - `-l`: lexical feature
+     - `-c X`: class-based lexical feature (word IDs are replaced by class IDs); classes for both languages should be provided in the format `-c source-file:target-file`
+     - `-L`: span length feature
+     - `-r X`: real-valued features (not fully supported)
+     - `-s X`: smoothing of parameters, with hyperparameter value X
 
-   - MLE estimation:
+   * MLE estimation:
 
    ```
    python parameter-estimation/svd_estimation.py -m minrule.entire.grammar/ dummy 1 mle.parameters > training.rules.with.rowIdxs
    ```
 
    Flags: 
-   	  - `-o`: estimate OOV probabilities (recommended)
-	  - `-f X`: filter rules to top X sorted by P(e|f) (recommended)
+     - `-o`: estimate OOV probabilities (recommended)
+     - `-f X`: filter rules to top X sorted by P(e|f) (recommended)
 
-   - EM estimation:
+   * EM estimation:
 
    ```
    parameter-estimation/em_estimation.py minrule.entire.grammar/ rank numIterations outDirForParameters scaling
    ```
 
    The scaling argument is used so that we don't underflow, and should be set to something reasonably high (e.g., 10^5 or 10^6). Flags:
-       - `-o`: whether to do OOV estimation or not; like svd_estimation.py, OOV estimation here is based on singletons (recommended)
-       - `-f X`: filter rules, need to provide as an argument a dictionary of parameters where the rules are already filtered
-       - `-m X`: Matsuzaki-style initialization: need to provide a dictionary of MLE parameters
-       - `-n X`: number of cores to use; default is 8
+     - `-o`: whether to do OOV estimation or not; like svd_estimation.py, OOV estimation here is based on singletons (recommended)
+     - `-f X`: filter rules, need to provide as an argument a dictionary of parameters where the rules are already filtered
+     - `-m X`: Matsuzaki-style initialization: need to provide a dictionary of MLE parameters
+     - `-n X`: number of cores to use; default is 8
 
 8. To decode an evaluation set (make sure it has also been preprocessed to escape special characters), run the parser with the estimated parameters.
 
@@ -156,4 +156,4 @@ python scripts/corpus2sgm.py outDirForDecoratedGrammars < test_sentences_escaped
 ## Citation
 
 If you make use of this package, please cite:
-Latent-variable Synchronous CFGs for Hierarchical Translation.  Avneesh Saluja, Chris Dyer, and Shay B. Cohen. In *Proceedings of EMNLP*, 2014. [[bibtex](http://www.cs.cmu.edu/~avneesh/EMNLP_2014.pdf)][[pdf][(http://www.cs.cmu.edu/~avneesh/EMNLP_2014.pdf)]
+Latent-variable Synchronous CFGs for Hierarchical Translation.  Avneesh Saluja, Chris Dyer, and Shay B. Cohen. In *Proceedings of EMNLP*, 2014. [[bibtex](http://www.cs.cmu.edu/~avneesh/EMNLP_2014.pdf)][[pdf](http://www.cs.cmu.edu/~avneesh/EMNLP_2014.pdf)]
