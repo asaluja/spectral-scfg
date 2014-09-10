@@ -1,21 +1,24 @@
 #!/usr/bin/python -tt
 
 '''
-File: decorate_minrules_with_features.py
+File: featurize_rules.py (originally: decorate_minrules_with_features.py)
 Date: October 13, 2013
 Author: Avneesh Saluja (avneesh@cs.cmu.edu)
-Description: this script takes as arguments the following:
+Description: decorates grammars either from the grammar extraction stage (post-processing
+of output from ZGC extractor) or per-sentence grammars with rule marginals, with additional
+features that are seen in conventional MT systems (joint phrase count, source phrase count, etc.)
+This script takes as arguments the following:
 arg 1: location of files with rules generated through the post-processed minimal
 rule output (of of H. Zhang, D. Gildea, and D. Chiang, NAACL 2008)
 arg 2: location of files with full set of rules extracted from suffix array structure
-(these rules are already featurized)
+(these rules are already featurized) (update - May 19, 2014: this is not used anymore; update - August 26, 2014: this has been removed)
 arg 3: location of output files 
 Usage: python decorate_minrules_with_features.py minRules-dir fullRules-dir output-dir
 Update (Jan 4, 2014): included per-sentence grammar writing ability
 Update (Jan 6, 2014): included filtering capability based on MLE for non per-sentence grammar writing
 Update (Jan 7, 2014): made a multiprocess version of this code
 Update (May 16, 2014): combined this script with inside-outside/featurize_rules.py, and renamed it
-featurized_rulespy
+featurize_rules.py
 Usage: python featurize_rules.py minrules-dir/spectral-marginal-dir hiero-dir/ output-dir/ numPartitions 
 There are also 3 optional flags:
 -f N: filter rules by P(e|f).  The argument N is how many rules to keep for a given source RHS. -f and -m
@@ -26,6 +29,9 @@ or a format that cdec can read in).
 -s: write out a per sentence grammar.  This is done by default if -m is one.  -f and -s cannot be on 
 together, because we need to aggregate information. 
 Update (May 19, 2014): added functionality to read in counts and compute features. 
+Update (August 26, 2014): removed unnecessary arguments (previously was reading in Hiero grammar as well,
+since features were being extracted from these grammars previously but now we extract these features directly 
+from the rule counts that are read in. 
 '''
 
 import sys, commands, string, gzip, os, getopt, re, cPickle, math
@@ -36,20 +42,13 @@ import cdec.sa
 countDict = None
 MAXSCORE=99
 
-def process_hiero_rules(filehandle):
-    hiero_rules = {}
-    for rule in filehandle:
-        elements = rule.strip().split(' ||| ')
-        key = ' ||| '.join(elements[:3])
-        hiero_rules[key] = elements[3]
-    return hiero_rules
-
-def extractFeatureList(gzfile):
-    file_contents = gzip.open(gzfile, 'rb').readlines()
-    features_line = file_contents[0].strip().split(' ||| ')[3]    
-    features_list = [featPair.split('=')[0] for featPair in features_line.split()]
-    return features_list
-
+'''
+Given a rule, this function removes the NT span information.  This is so that
+we can extract relevant frequency estimates from the entire corpus, therefore
+the key for this dictionary is not NT span specific. 
+It is specifically for per-sentence grammars written out with rule marginals,
+that need to be subsequently decorated for MT decoding. 
+'''
 def removeSpanInfo(elements):
     noLex = False
     expr = re.compile(r'\[([^]]*)\]')
@@ -76,6 +75,11 @@ def removeSpanInfo(elements):
         srcRHS = tgtRHS #tgtRHS has the source word, we passed this through in hg_io.py
     return (' ||| '.join([LHS, srcRHS, tgtRHS]), noLex)
 
+'''
+Used to maintain the top 'limit' rules when sorted by P(e|f)
+Is not used if we are featurizing decorated per-sentence grammars
+(which already have the rule marginal feature)
+'''
 def filterRules(countDict, limit):
     srcTgtDict = {}
     srcTgtDict = countDict
@@ -90,6 +94,9 @@ def filterRules(countDict, limit):
                 sys.stderr.write("Source RHS: %s; out of %d rules, filtered %d\n"%(srcKey, numTgtRules, len(rules_to_filter)))
     return srcTgtDict
 
+'''
+Core feature computation function. 
+'''
 def computeFeatures(ruleToPrint, addOne):
     elements = ruleToPrint.split(' ||| ')
     outputStr = ""
@@ -126,6 +133,9 @@ def maxLexFgivenE(fwords, ewords, ttable):
         maxOffScore += -math.log10(maxScore) if maxScore > 0 else MAXSCORE
     return maxOffScore
 
+'''
+removes NTs from a phrase string
+'''
 def stripNTs(phrase):
     words = []
     expr = re.compile(r'\[([^]]*)\]')
@@ -158,11 +168,10 @@ def computeLexicalScores(model_loc, rules_list):
         new_rules.append(new_rule)
     return new_rules            
 
-def decorateSentenceGrammar(minRule_file, hiero_file, out_file, lex_model, optDict):
+def decorateSentenceGrammar(minRule_file, out_file, lex_model, optDict):
     perSent = "perSentence" in optDict
     marginal = "marginal" in optDict
     addOne = "addOne" in optDict
-    numRulesInHiero = 0
     numRulesTotal = 0
     if os.path.isfile(minRule_file):
         rules_output = []
@@ -187,11 +196,11 @@ def decorateSentenceGrammar(minRule_file, hiero_file, out_file, lex_model, optDi
                 if marginal and noLex: #[X1] [X2] rule
                     ruleToPrint += " Glue=1.0"
                 ntNumbers = [int(ntIdx) for ntIdx in re.findall(r'\[([^]]*)\]', elements[2])] if marginal else [int(ntIdx.split(',')[1]) for ntIdx in re.findall(r'\[([^]]*)\]', elements[2])]
-                if len(ntNumbers) == 2 and (ntNumbers[0] > ntNumbers[1]):                        
+                if len(ntNumbers) == 2 and (ntNumbers[0] > ntNumbers[1]): #monotone/swap check
                     ruleToPrint += " Inverse=1.0"
                 rules_output.append(ruleToPrint)        
         minrule_fh.close()
-        if marginal or perSent:
+        if marginal or perSent: #because we make an external call to pycdec, which contains the lexical model, we just do one call
             new_rules = computeLexicalScores(lex_model, rules_output)
             out_fh = gzip.open(out_file, 'w')
             for ruleToPrint in new_rules:
@@ -226,11 +235,10 @@ def main():
         sys.stderr.write("Error: -f and -s or -f and -m cannot be on at the same time\n")
         sys.exit()
     minRule_grammars_loc = args[0]
-    hiero_grammars_loc = args[1]
-    outFile_loc = args[2]
-    countDict = cPickle.load(open(args[3], 'rb')) #load counts for feature computation
-    lex_model = args[4]
-    numProcesses = int(args[5])
+    outFile_loc = args[1]
+    countDict = cPickle.load(open(args[2], 'rb')) #load counts for feature computation
+    lex_model = args[3]
+    numProcesses = int(args[4])
     
     minRule_grammars = os.listdir(minRule_grammars_loc)
     seen_rules = None
@@ -241,8 +249,10 @@ def main():
     else:
         pool = mp.Pool(numProcesses)
     for minRule_file in minRule_grammars:
-        decorateSentenceGrammar(minRule_grammars_loc + minRule_file, hiero_grammars_loc + minRule_file, outFile_loc + minRule_file, lex_model, optDict)
-        #pool.apply_async(decorateSentenceGrammar, (minRule_grammars_loc + minRule_file, hiero_grammars_loc + minRule_file, outFile_loc + minRule_file, lex_model, optDict))    
+        if numProcesses > 1:
+            pool.apply_async(decorateSentenceGrammar, (minRule_grammars_loc + minRule_file, outFile_loc + minRule_file, lex_model, optDict))    
+        else:
+            decorateSentenceGrammar(minRule_grammars_loc + minRule_file, outFile_loc + minRule_file, lex_model, optDict)
     pool.close()
     pool.join()                             
 

@@ -1,14 +1,12 @@
 #!/usr/bin/python -tt
 
-######################
-#File: preproc_minrule_input.py
-#Date: September 30, 2013
-#Description: this script takes an alignment file,
-#in the standard format, e.g., 0-0 1-0 1-1 2-2 etc.
-#and changes the format to what is required for
-#the minimal rule extraction code. 
-#Author: Avneesh Saluja (avneesh@cs.cmu.edu)
-#####################
+'''
+File: preproc_minrule_input.py
+Date: September 30, 2013
+Description: this script takes an alignment file, in the standard format, e.g., 0-0 1-0 1-1 2-2 etc.
+and changes the format to what is required for the minimal rule extraction code.
+Author: Avneesh Saluja (avneesh@cs.cmu.edu)
+'''
 
 import sys, commands, string
 
