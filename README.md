@@ -95,7 +95,7 @@ Input: parallel sentence corpus (tokenized, lower-cased). Assume all code is run
      - `-r X`: real-valued features (not fully supported)
      - `-s X`: smoothing of parameters, with hyperparameter value X
 
-   2. MLE estimation:
+  2. MLE estimation:
 
    ```
    python parameter-estimation/svd_estimation.py -m minrule.entire.grammar/ dummy 1 mle.parameters > training.rules.with.rowIdxs
@@ -105,7 +105,7 @@ Input: parallel sentence corpus (tokenized, lower-cased). Assume all code is run
      - `-o`: estimate OOV probabilities (recommended)
      - `-f X`: filter rules to top X sorted by P(e|f) (recommended)
 
-   3. EM estimation:
+  3. EM estimation:
 
    ```
    parameter-estimation/em_estimation.py minrule.entire.grammar/ rank numIterations outDirForParameters scaling
